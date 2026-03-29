@@ -9,34 +9,58 @@ function kraken(command) {
   return JSON.parse(result);
 }
 
-// 현재 가격 조회
+// 현재 가격 조회 (last trade price 반환)
 function getTicker(pair = 'XBTUSD') {
-  return kraken(`ticker ${pair}`);
+  const raw = kraken(`ticker ${pair}`);
+  // {"XXBTZUSD": {"c": ["65977.9", ...]}} 구조에서 현재가 추출
+  const key = Object.keys(raw)[0];
+  return parseFloat(raw[key]?.c?.[0] || 0);
 }
+
+// 페이퍼 트레이딩 모드 (기본값 true)
+const PAPER_MODE = process.env.PAPER_MODE !== 'false';
 
 // 잔고 조회
 function getBalance() {
+  if (PAPER_MODE) {
+    const status = kraken('paper status');
+    const usd = status?.find?.(r => r.Field === 'Current Value')?.Value || '10000.00 USD';
+    return { ZUSD: parseFloat(usd) };
+  }
   return kraken('balance');
 }
 
-// 최근 OHLC 캔들 데이터
+// 최근 OHLC 캔들 데이터 (종가 배열로 변환)
 function getOHLC(pair = 'XBTUSD', interval = 60) {
-  return kraken(`ohlc ${pair} --interval ${interval}`);
+  const raw = kraken(`ohlc ${pair} --interval ${interval}`);
+  // {"XXBTZUSD": [[ts, open, high, low, close, vwap, vol, count], ...]} 구조
+  const key = Object.keys(raw).find(k => k !== 'last');
+  const candles = raw[key] || [];
+  // [timestamp, open, high, low, close, vwap, volume, count] → {close}
+  return candles.map(c => ({ close: c[4] }));
 }
 
 // 시장가 매수
 function buyMarket(pair, volume) {
+  if (PAPER_MODE) return kraken(`paper buy --pair ${pair} --volume ${volume}`);
   return kraken(`order add --pair ${pair} --type buy --ordertype market --volume ${volume} --yes`);
 }
 
 // 시장가 매도
 function sellMarket(pair, volume) {
+  if (PAPER_MODE) return kraken(`paper sell --pair ${pair} --volume ${volume}`);
   return kraken(`order add --pair ${pair} --type sell --ordertype market --volume ${volume} --yes`);
 }
 
 // 오픈 주문 조회
 function getOpenOrders() {
+  if (PAPER_MODE) return kraken('paper orders');
   return kraken('open-orders');
 }
 
-module.exports = { getTicker, getBalance, getOHLC, buyMarket, sellMarket, getOpenOrders };
+// 페이퍼 트레이딩 PnL 현황
+function getPaperStatus() {
+  return kraken('paper status');
+}
+
+module.exports = { getTicker, getBalance, getOHLC, buyMarket, sellMarket, getOpenOrders, getPaperStatus, PAPER_MODE };
