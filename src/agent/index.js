@@ -163,7 +163,7 @@ if (pendingTrade) {
   }
 }
 
-async function executeTrade(isBuy, volume, currentPrice, signal, votes, currentState) {
+async function executeTrade(isBuy, volume, currentPrice, signal, votes, currentState, indicators) {
   if (ONCHAIN_ENABLED) {
     const { signature } = await signTradeIntent({
       signer,
@@ -198,7 +198,7 @@ async function executeTrade(isBuy, volume, currentPrice, signal, votes, currentS
         peakPrice: currentPrice,
         state: currentState,
         action: 'BUY',
-        indicators: detail,
+        indicators: indicators || null,
       };
     } else {
       // 물타기 / 불타기 추가 진입
@@ -215,10 +215,11 @@ async function executeTrade(isBuy, volume, currentPrice, signal, votes, currentS
   } else {
     // SELL: 학습 업데이트 (평균 진입가 기준 PnL)
     if (pendingTrade) {
-      const pnlPct = (currentPrice - pendingTrade.avgPrice) / pendingTrade.avgPrice * 100;
+      const avgP = pendingTrade.avgPrice || currentPrice;
+      const pnlPct = (currentPrice - avgP) / avgP * 100;
       const outcome = pnlPct > 0 ? 'win' : 'loss';
-      const entryCount = pendingTrade.entries.length;
-      console.log(`[결과] 평균진입 $${pendingTrade.avgPrice.toFixed(0)} → 청산 $${currentPrice.toLocaleString()} | PnL: ${pnlPct.toFixed(2)}% | ${entryCount}회 진입 (${outcome})`);
+      const entryCount = pendingTrade.entries?.length || 1;
+      console.log(`[결과] 평균진입 $${avgP.toFixed(0)} → 청산 $${currentPrice.toLocaleString()} | PnL: ${pnlPct.toFixed(2)}% | ${entryCount}회 진입 (${outcome})`);
 
       if (pendingTrade.indicators) updateWeights(pendingTrade.indicators, 'BUY', outcome);
 
@@ -351,13 +352,16 @@ async function runCycle() {
         unrealizedPnl,
         unrealizedPnlPct,
       },
-      openPosition: pendingTrade ? {
-        avgPrice: pendingTrade.avgPrice,
-        totalVolume: pendingTrade.totalVolume,
-        entryCount: pendingTrade.entries.length,
-        peakPrice: pendingTrade.peakPrice,
-        pnlPct: ((currentPrice - pendingTrade.avgPrice) / pendingTrade.avgPrice * 100).toFixed(2),
-      } : null,
+      openPosition: pendingTrade ? (() => {
+        const avgP = pendingTrade.avgPrice || currentPrice;
+        return {
+          avgPrice: avgP,
+          totalVolume: pendingTrade.totalVolume || 0,
+          entryCount: pendingTrade.entries?.length || 1,
+          peakPrice: pendingTrade.peakPrice || avgP,
+          pnlPct: (((currentPrice - avgP) / avgP) * 100).toFixed(2),
+        };
+      })() : null,
       regime,
       ema200: ema200 ? parseFloat(ema200.toFixed(0)) : null,
       atr: atr ? parseFloat(atr.toFixed(2)) : null,
@@ -448,7 +452,7 @@ async function runCycle() {
       pendingTrade = { state: qState, action: 'BUY', entryPrice: currentPrice, indicators: detail };
     }
 
-    await executeTrade(isBuy, finalVolume, currentPrice, finalSignal, votes, qState);
+    await executeTrade(isBuy, finalVolume, currentPrice, finalSignal, votes, qState, detail);
 
   } catch (err) {
     console.error('[에러]', err.message);
