@@ -30,14 +30,23 @@ function getBalance() {
   return kraken('balance');
 }
 
-// 최근 OHLC 캔들 데이터 (종가 배열로 변환)
+// 최근 OHLC 캔들 데이터
 function getOHLC(pair = 'XBTUSD', interval = 60) {
   const raw = kraken(`ohlc ${pair} --interval ${interval}`);
   // {"XXBTZUSD": [[ts, open, high, low, close, vwap, vol, count], ...]} 구조
   const key = Object.keys(raw).find(k => k !== 'last');
   const candles = raw[key] || [];
-  // [timestamp, open, high, low, close, vwap, volume, count] → {close}
-  return candles.map(c => ({ close: c[4] }));
+  // [timestamp, open, high, low, close, vwap, volume, count] → 전체 필드 반환
+  return candles.map(c => ({
+    timestamp: c[0],
+    open:   parseFloat(c[1]),
+    high:   parseFloat(c[2]),
+    low:    parseFloat(c[3]),
+    close:  parseFloat(c[4]),
+    vwap:   parseFloat(c[5]),
+    volume: parseFloat(c[6]),
+    count:  c[7],
+  }));
 }
 
 // 시장가 매수
