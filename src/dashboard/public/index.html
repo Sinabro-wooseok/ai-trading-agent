@@ -4,399 +4,393 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sinabro AI Trading Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #0a0e1a;
-      color: #e2e8f0;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      min-height: 100vh;
-    }
+    body { background: #0a0e1a; color: #e2e8f0; font-family: 'SF Mono', 'Fira Code', monospace; }
 
     header {
-      background: linear-gradient(135deg, #1a1f35 0%, #0d1526 100%);
-      border-bottom: 1px solid #2d3748;
-      padding: 16px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      background: #131929; border-bottom: 1px solid #2d3748;
+      padding: 14px 24px; display: flex; justify-content: space-between; align-items: center;
     }
-    header .logo { font-size: 20px; font-weight: 700; color: #63b3ed; letter-spacing: 1px; }
-    header .logo span { color: #48bb78; }
+    .logo { font-size: 18px; font-weight: 700; color: #63b3ed; letter-spacing: 1px; }
+    .logo span { color: #48bb78; }
+    .header-right { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #718096; }
+
     .status-dot {
-      display: inline-block; width: 10px; height: 10px;
-      border-radius: 50%; background: #48bb78;
-      box-shadow: 0 0 8px #48bb78; animation: pulse 2s infinite;
-      margin-right: 8px;
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: #48bb78; box-shadow: 0 0 6px #48bb78; animation: pulse 2s infinite;
+      margin-right: 6px;
     }
-    .status-dot.halted { background: #f56565; box-shadow: 0 0 8px #f56565; }
-    .status-dot.warning { background: #ed8936; box-shadow: 0 0 8px #ed8936; }
+    .status-dot.halted { background: #f56565; box-shadow: 0 0 6px #f56565; }
+    .status-dot.error  { background: #ed8936; box-shadow: 0 0 6px #ed8936; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      padding: 20px;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; }
+    .badge-erc { background: #1a2a3a; color: #63b3ed; border: 1px solid #2d5a8e; }
+    .badge-erc.on { background: #1a3a2a; color: #48bb78; border-color: #2d6a4a; }
 
-    .card {
-      background: #131929;
-      border: 1px solid #2d3748;
-      border-radius: 12px;
-      padding: 20px;
-    }
-    .card h3 {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      color: #718096;
-      margin-bottom: 12px;
-    }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; padding: 16px; max-width: 1500px; margin: 0 auto; }
+    .card { background: #131929; border: 1px solid #2d3748; border-radius: 10px; padding: 16px; }
+    .card h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #4a5568; margin-bottom: 10px; }
 
-    .big-price {
-      font-size: 36px; font-weight: 700; color: #63b3ed;
-      letter-spacing: -1px;
-    }
-    .sub { font-size: 12px; color: #718096; margin-top: 4px; }
+    .col2  { grid-column: span 2; }
+    .col3  { grid-column: span 3; }
+    .col4  { grid-column: span 4; }
+    .col6  { grid-column: span 6; }
+    .col8  { grid-column: span 8; }
+    .col12 { grid-column: span 12; }
 
-    .signal-badge {
-      display: inline-block;
-      padding: 6px 20px; border-radius: 6px;
-      font-size: 22px; font-weight: 800;
-      letter-spacing: 2px;
-    }
-    .signal-badge.BUY { background: #1a3a2a; color: #48bb78; border: 1px solid #48bb78; }
+    /* 숫자 카드 */
+    .big-num { font-size: 28px; font-weight: 700; color: #63b3ed; letter-spacing: -0.5px; }
+    .sub-label { font-size: 11px; color: #4a5568; margin-top: 3px; }
+
+    /* 시그널 */
+    .signal-badge { display: inline-block; padding: 5px 18px; border-radius: 6px; font-size: 20px; font-weight: 800; letter-spacing: 2px; }
+    .signal-badge.BUY  { background: #1a3a2a; color: #48bb78; border: 1px solid #48bb78; }
     .signal-badge.SELL { background: #3a1a1a; color: #f56565; border: 1px solid #f56565; }
-    .signal-badge.HOLD { background: #1a2a3a; color: #63b3ed; border: 1px solid #63b3ed; }
+    .signal-badge.HOLD { background: #1a2a3a; color: #63b3ed; border: 1px solid #2d5a8e; }
 
-    .vote-bar {
-      display: flex; height: 8px; border-radius: 4px;
-      overflow: hidden; margin: 12px 0;
-    }
-    .vote-buy { background: #48bb78; transition: width 0.5s; }
+    .vote-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 8px 0; }
+    .vote-buy  { background: #48bb78; transition: width 0.5s; }
     .vote-sell { background: #f56565; transition: width 0.5s; }
-    .vote-hold { background: #2d3748; flex: 1; }
+    .vote-rest { background: #1e2942; flex: 1; }
 
-    .indicator-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-    }
-    .indicator {
-      background: #0d1526; border-radius: 8px; padding: 12px;
-    }
-    .indicator .name { font-size: 10px; color: #718096; margin-bottom: 4px; text-transform: uppercase; }
-    .indicator .val { font-size: 18px; font-weight: 600; }
-    .indicator .sig {
-      font-size: 10px; padding: 2px 6px; border-radius: 3px;
-      display: inline-block; margin-top: 4px;
-    }
-    .sig.BUY { background: #1a3a2a; color: #48bb78; }
-    .sig.SELL { background: #3a1a1a; color: #f56565; }
-    .sig.HOLD { background: #1a2536; color: #63b3ed; }
+    /* 지표 그리드 */
+    .ind-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .ind { background: #0d1526; border-radius: 7px; padding: 10px; }
+    .ind .n { font-size: 9px; color: #4a5568; text-transform: uppercase; margin-bottom: 3px; }
+    .ind .v { font-size: 16px; font-weight: 600; }
+    .sig-pill { font-size: 9px; padding: 1px 6px; border-radius: 3px; display: inline-block; margin-top: 3px; }
+    .sig-pill.BUY  { background: #1a3a2a; color: #48bb78; }
+    .sig-pill.SELL { background: #3a1a1a; color: #f56565; }
+    .sig-pill.HOLD { background: #1a2536; color: #63b3ed; }
 
-    .balance-row {
-      display: flex; justify-content: space-between;
-      padding: 8px 0; border-bottom: 1px solid #1e2942;
-      font-size: 14px;
-    }
-    .balance-row:last-child { border-bottom: none; }
-    .balance-row .label { color: #718096; }
-    .balance-row .amount { font-weight: 600; color: #e2e8f0; }
+    /* 통계 */
+    .stat-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #1a2030; font-size: 13px; }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: #718096; }
+    .stat-val { font-weight: 600; }
+    .pos { color: #48bb78; }
+    .neg { color: #f56565; }
 
-    .pnl-positive { color: #48bb78; }
-    .pnl-negative { color: #f56565; }
+    /* 거래 테이블 */
+    .trade-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .trade-table th { text-align: left; color: #4a5568; font-weight: 400; padding: 5px 8px; border-bottom: 1px solid #1e2942; font-size: 9px; text-transform: uppercase; }
+    .trade-table td { padding: 7px 8px; border-bottom: 1px solid #0d1526; }
+    .trade-table tr:last-child td { border-bottom: none; }
+    .buy-col  { color: #48bb78; font-weight: 700; }
+    .sell-col { color: #f56565; font-weight: 700; }
 
-    .trades-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .trades-table th {
-      text-align: left; color: #718096; font-weight: 400;
-      padding: 6px 8px; border-bottom: 1px solid #2d3748;
-      font-size: 10px; text-transform: uppercase;
-    }
-    .trades-table td { padding: 8px; border-bottom: 1px solid #1a2030; }
-    .trades-table tr:last-child td { border-bottom: none; }
-    .badge-buy { color: #48bb78; font-weight: 700; }
-    .badge-sell { color: #f56565; font-weight: 700; }
+    /* Fear&Greed */
+    .fg-bar { width: 100%; height: 12px; border-radius: 6px; background: linear-gradient(to right, #48bb78 0%, #68d391 25%, #ed8936 50%, #f56565 75%, #c53030 100%); position: relative; margin: 10px 0; }
+    .fg-needle { position: absolute; top: -5px; width: 4px; height: 22px; background: white; border-radius: 2px; transform: translateX(-50%); transition: left 0.5s; box-shadow: 0 0 6px rgba(255,255,255,0.9); }
 
-    .last-update { font-size: 11px; color: #4a5568; }
+    /* 추세 */
+    .regime-bull { color: #48bb78; font-weight: 700; }
+    .regime-bear { color: #f56565; font-weight: 700; }
+    .regime-neutral { color: #718096; font-weight: 700; }
 
-    .card.wide { grid-column: 1 / -1; }
-    .card.span2 { grid-column: span 2; }
-
-    .fg-meter {
-      width: 100%; height: 20px; border-radius: 10px;
-      background: linear-gradient(to right, #48bb78, #ed8936, #f56565);
-      position: relative; margin: 12px 0;
-    }
-    .fg-needle {
-      position: absolute; top: -4px;
-      width: 4px; height: 28px;
-      background: white; border-radius: 2px;
-      transform: translateX(-50%);
-      transition: left 0.5s;
-      box-shadow: 0 0 6px rgba(255,255,255,0.8);
-    }
-    .onchain-badge {
-      display: inline-block; padding: 2px 8px;
-      border-radius: 4px; font-size: 10px;
-      background: #1a2a3a; color: #63b3ed;
-      border: 1px solid #2d5a8e;
-    }
-    .onchain-badge.active { background: #1a3a2a; color: #48bb78; border-color: #2d6a4a; }
-
-    .cycle-count { font-size: 48px; font-weight: 700; color: #4a5568; }
+    canvas { max-height: 200px; }
   </style>
 </head>
 <body>
-  <header>
-    <div class="logo">Sinabro<span> AI</span> Trading Agent</div>
-    <div style="display:flex;align-items:center;gap:16px">
-      <span id="onchain-badge" class="onchain-badge">ERC-8004: OFF</span>
-      <span class="last-update"><span class="status-dot" id="status-dot"></span><span id="last-update">연결 중...</span></span>
-    </div>
-  </header>
+<header>
+  <div class="logo">Sinabro<span> AI</span> Trading Agent <span style="font-size:11px;color:#4a5568">v3</span></div>
+  <div class="header-right">
+    <span id="erc-badge" class="badge badge-erc">ERC-8004: OFF</span>
+    <span><span class="status-dot" id="sdot"></span><span id="last-up">--</span></span>
+  </div>
+</header>
 
-  <div class="grid">
-    <!-- BTC 가격 -->
-    <div class="card">
-      <h3>BTC / USD</h3>
-      <div class="big-price" id="btc-price">$--,---</div>
-      <div class="sub" id="price-update">--</div>
-    </div>
+<div class="grid">
 
-    <!-- 시그널 -->
-    <div class="card">
-      <h3>현재 시그널</h3>
-      <div style="margin-bottom:8px"><span class="signal-badge HOLD" id="signal-badge">HOLD</span></div>
-      <div class="vote-bar">
-        <div class="vote-buy" id="vote-buy" style="width:0%"></div>
-        <div class="vote-sell" id="vote-sell" style="width:0%"></div>
-        <div class="vote-hold"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#718096">
-        <span>매수 <b id="vote-buy-n" style="color:#48bb78">0</b>/7</span>
-        <span>매도 <b id="vote-sell-n" style="color:#f56565">0</b>/7</span>
-      </div>
-    </div>
+  <!-- 가격 -->
+  <div class="card col2">
+    <h3>BTC / USD</h3>
+    <div class="big-num" id="price">$--</div>
+    <div class="sub-label" id="price-time">--</div>
+  </div>
 
-    <!-- 사이클 -->
-    <div class="card">
-      <h3>실행 사이클</h3>
-      <div class="cycle-count" id="cycle-count">0</div>
-      <div class="sub">총 실행 횟수</div>
+  <!-- 시그널 -->
+  <div class="card col2">
+    <h3>시그널</h3>
+    <span class="signal-badge HOLD" id="sig-badge">HOLD</span>
+    <div class="vote-bar" style="margin-top:10px">
+      <div class="vote-buy" id="vb" style="width:0%"></div>
+      <div class="vote-sell" id="vs" style="width:0%"></div>
+      <div class="vote-rest"></div>
     </div>
-
-    <!-- 잔고 -->
-    <div class="card">
-      <h3>포트폴리오</h3>
-      <div class="balance-row">
-        <span class="label">USD 잔고</span>
-        <span class="amount" id="bal-usd">$0.00</span>
-      </div>
-      <div class="balance-row">
-        <span class="label">BTC 잔고</span>
-        <span class="amount" id="bal-btc">0.000000</span>
-      </div>
-      <div class="balance-row">
-        <span class="label">총 평가액</span>
-        <span class="amount" id="bal-total" style="color:#63b3ed;font-size:16px">$0.00</span>
-      </div>
-      <div class="balance-row">
-        <span class="label">PnL</span>
-        <span class="amount pnl-positive" id="pnl">--</span>
-      </div>
-    </div>
-
-    <!-- 7개 지표 -->
-    <div class="card span2">
-      <h3>7개 지표 상세</h3>
-      <div class="indicator-grid" id="indicators">
-        <div class="indicator"><div class="name">RSI</div><div class="val" id="rsi-val">--</div><span class="sig HOLD" id="rsi-sig">HOLD</span></div>
-        <div class="indicator"><div class="name">StochRSI</div><div class="val" id="stoch-val">--</div><span class="sig HOLD" id="stoch-sig">HOLD</span></div>
-        <div class="indicator"><div class="name">MACD Histogram</div><div class="val" id="macd-val">--</div><span class="sig HOLD" id="macd-sig">HOLD</span></div>
-        <div class="indicator"><div class="name">Bollinger Bands</div><div class="val" id="bb-val">--</div><span class="sig HOLD" id="bb-sig">HOLD</span></div>
-        <div class="indicator"><div class="name">EMA 9/21</div><div class="val" id="ema-val">--</div><span class="sig HOLD" id="ema-sig">HOLD</span></div>
-        <div class="indicator"><div class="name">VWAP</div><div class="val" id="vwap-val">--</div><span class="sig HOLD" id="vwap-sig">HOLD</span></div>
-      </div>
-    </div>
-
-    <!-- Fear & Greed -->
-    <div class="card">
-      <h3>Fear & Greed Index</h3>
-      <div style="font-size:42px;font-weight:700;text-align:center;margin:8px 0" id="fg-value">--</div>
-      <div class="fg-meter"><div class="fg-needle" id="fg-needle" style="left:50%"></div></div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:#718096;margin-top:4px">
-        <span>Extreme Fear</span><span>Neutral</span><span>Extreme Greed</span>
-      </div>
-      <div style="text-align:center;margin-top:8px;font-size:12px;color:#a0aec0" id="fg-label">--</div>
-    </div>
-
-    <!-- 최근 거래 -->
-    <div class="card wide">
-      <h3>최근 거래 내역</h3>
-      <table class="trades-table">
-        <thead>
-          <tr>
-            <th>시간</th>
-            <th>종류</th>
-            <th>가격</th>
-            <th>수량 (BTC)</th>
-            <th>금액 (USD)</th>
-            <th>시그널</th>
-          </tr>
-        </thead>
-        <tbody id="trades-body">
-          <tr><td colspan="6" style="text-align:center;color:#4a5568;padding:20px">거래 기록 없음</td></tr>
-        </tbody>
-      </table>
+    <div style="font-size:10px;color:#4a5568;display:flex;justify-content:space-between">
+      <span>매수 <b id="vbn" style="color:#48bb78">0</b></span>
+      <span>매도 <b id="vsn" style="color:#f56565">0</b></span>
+      <span style="color:#718096">/ 7</span>
     </div>
   </div>
 
-  <script>
-    let startBalance = null;
+  <!-- 추세 -->
+  <div class="card col2">
+    <h3>시장 추세 (EMA200)</h3>
+    <div class="big-num" id="regime" style="font-size:22px">--</div>
+    <div class="sub-label">EMA200: $<span id="ema200">--</span></div>
+    <div class="sub-label" style="margin-top:4px">손절선: $<span id="stop-price">--</span></div>
+  </div>
 
-    function fmt(n, d = 2) {
-      if (n == null || isNaN(n)) return '--';
-      return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  <!-- 사이클 / ATR -->
+  <div class="card col2">
+    <h3>사이클 / ATR</h3>
+    <div class="big-num" id="cycle" style="font-size:32px;color:#4a5568">0</div>
+    <div class="sub-label">ATR: $<span id="atr-val">--</span></div>
+  </div>
+
+  <!-- 잔고 -->
+  <div class="card col4">
+    <h3>포트폴리오</h3>
+    <div class="stat-row"><span class="stat-label">USD</span><span class="stat-val" id="bal-usd">$0</span></div>
+    <div class="stat-row"><span class="stat-label">BTC</span><span class="stat-val" id="bal-btc">0 BTC</span></div>
+    <div class="stat-row"><span class="stat-label">총 평가액</span><span class="stat-val" id="bal-total" style="color:#63b3ed">$0</span></div>
+    <div class="stat-row"><span class="stat-label">PnL</span><span class="stat-val" id="pnl">--</span></div>
+  </div>
+
+  <!-- 가격 차트 -->
+  <div class="card col8">
+    <h3>가격 히스토리</h3>
+    <canvas id="price-chart"></canvas>
+  </div>
+
+  <!-- 수익 곡선 -->
+  <div class="card col4">
+    <h3>수익 곡선 (Equity)</h3>
+    <canvas id="equity-chart"></canvas>
+  </div>
+
+  <!-- 거래 통계 -->
+  <div class="card col3">
+    <h3>거래 통계</h3>
+    <div class="stat-row"><span class="stat-label">총 거래</span><span class="stat-val" id="s-total">0</span></div>
+    <div class="stat-row"><span class="stat-label">승</span><span class="stat-val pos" id="s-wins">0</span></div>
+    <div class="stat-row"><span class="stat-label">패</span><span class="stat-val neg" id="s-losses">0</span></div>
+    <div class="stat-row"><span class="stat-label">승률</span><span class="stat-val" id="s-wr">--%</span></div>
+    <div class="stat-row"><span class="stat-label">총 PnL</span><span class="stat-val" id="s-pnl">$0</span></div>
+  </div>
+
+  <!-- 7개 지표 -->
+  <div class="card col5">
+    <h3>7개 지표</h3>
+    <div class="ind-grid">
+      <div class="ind"><div class="n">RSI</div><div class="v" id="rsi-v">--</div><span class="sig-pill HOLD" id="rsi-s">HOLD</span></div>
+      <div class="ind"><div class="n">StochRSI</div><div class="v" id="stoch-v">--</div><span class="sig-pill HOLD" id="stoch-s">HOLD</span></div>
+      <div class="ind"><div class="n">MACD Hist</div><div class="v" id="macd-v">--</div><span class="sig-pill HOLD" id="macd-s">HOLD</span></div>
+      <div class="ind"><div class="n">Bollinger</div><div class="v" id="bb-v" style="font-size:12px">--</div><span class="sig-pill HOLD" id="bb-s">HOLD</span></div>
+      <div class="ind"><div class="n">EMA 9/21</div><div class="v" id="ema-v" style="font-size:12px">--</div><span class="sig-pill HOLD" id="ema-s">HOLD</span></div>
+      <div class="ind"><div class="n">VWAP</div><div class="v" id="vwap-v">--</div><span class="sig-pill HOLD" id="vwap-s">HOLD</span></div>
+    </div>
+  </div>
+
+  <!-- Fear & Greed -->
+  <div class="card col4">
+    <h3>Fear & Greed Index</h3>
+    <div style="font-size:40px;font-weight:700;text-align:center;margin:4px 0" id="fg-num">--</div>
+    <div class="fg-bar"><div class="fg-needle" id="fg-needle" style="left:50%"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:9px;color:#4a5568">
+      <span>Extreme Fear</span><span>Neutral</span><span>Extreme Greed</span>
+    </div>
+    <div style="text-align:center;margin-top:6px;font-size:12px;color:#a0aec0" id="fg-label">--</div>
+  </div>
+
+  <!-- 최근 거래 -->
+  <div class="card col12">
+    <h3>최근 거래 내역</h3>
+    <table class="trade-table">
+      <thead><tr>
+        <th>시간</th><th>종류</th><th>가격</th><th>수량 (BTC)</th>
+        <th>금액 (USD)</th><th>시그널</th><th>투표</th>
+      </tr></thead>
+      <tbody id="trades-body">
+        <tr><td colspan="7" style="text-align:center;color:#4a5568;padding:16px">거래 기록 없음</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  const fmt = (n, d=2) => n == null || isNaN(n) ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+  const sc = s => s === 'BUY' ? 'BUY' : s === 'SELL' ? 'SELL' : 'HOLD';
+
+  function setSig(id, s) {
+    const el = document.getElementById(id);
+    el.textContent = s || 'HOLD';
+    el.className = 'sig-pill ' + sc(s);
+  }
+
+  // Chart.js 초기화
+  const chartOpts = (label, color) => ({
+    type: 'line',
+    data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: color + '20', borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: { grid: { color: '#1a2030' }, ticks: { color: '#4a5568', font: { size: 10 }, callback: v => '$' + fmt(v, 0) } }
+      },
+      animation: false,
+    }
+  });
+
+  const priceChart = new Chart(document.getElementById('price-chart'), chartOpts('BTC 가격', '#63b3ed'));
+  const equityChart = new Chart(document.getElementById('equity-chart'), chartOpts('Equity', '#48bb78'));
+
+  // 매수/매도 점 표시용 scatter 데이터셋 추가
+  priceChart.data.datasets.push({
+    type: 'scatter', label: 'BUY', data: [], backgroundColor: '#48bb78', pointRadius: 5, pointStyle: 'triangle',
+  });
+  priceChart.data.datasets.push({
+    type: 'scatter', label: 'SELL', data: [], backgroundColor: '#f56565', pointRadius: 5, pointStyle: 'rectRot',
+  });
+
+  let startBalance = null;
+
+  function updateState(s) {
+    document.getElementById('price').textContent = '$' + fmt(s.price, 0);
+    document.getElementById('price-time').textContent = s.lastUpdate ? new Date(s.lastUpdate).toLocaleTimeString('ko-KR') : '--';
+    document.getElementById('last-up').textContent = s.lastUpdate ? new Date(s.lastUpdate).toLocaleTimeString('ko-KR') : '--';
+    document.getElementById('cycle').textContent = s.cycle || 0;
+
+    const dot = document.getElementById('sdot');
+    dot.className = 'status-dot ' + (s.status === 'running' ? '' : s.status || '');
+
+    const eb = document.getElementById('erc-badge');
+    eb.textContent = s.onchain ? 'ERC-8004: ON' : 'ERC-8004: OFF';
+    eb.className = 'badge badge-erc' + (s.onchain ? ' on' : '');
+
+    // 시그널
+    const sb = document.getElementById('sig-badge');
+    sb.textContent = s.signal || 'HOLD';
+    sb.className = 'signal-badge ' + sc(s.signal);
+
+    const total = s.votes?.total || 7;
+    document.getElementById('vb').style.width = ((s.votes?.buyCount || 0) / total * 100) + '%';
+    document.getElementById('vs').style.width = ((s.votes?.sellCount || 0) / total * 100) + '%';
+    document.getElementById('vbn').textContent = s.votes?.buyCount || 0;
+    document.getElementById('vsn').textContent = s.votes?.sellCount || 0;
+
+    // 추세
+    const regimeEl = document.getElementById('regime');
+    const r = s.regime || 'neutral';
+    regimeEl.textContent = r === 'bull' ? '상승장 (BULL)' : r === 'bear' ? '하락장 (BEAR)' : 'NEUTRAL';
+    regimeEl.className = 'big-num regime-' + r;
+    document.getElementById('ema200').textContent = s.ema200 ? fmt(s.ema200, 0) : '--';
+    document.getElementById('stop-price').textContent = s.stopLossPrice ? fmt(s.stopLossPrice, 0) : '--';
+    document.getElementById('atr-val').textContent = s.atr ? fmt(s.atr, 0) : '--';
+
+    // 잔고
+    const b = s.balance || {};
+    document.getElementById('bal-usd').textContent = '$' + fmt(b.usd);
+    document.getElementById('bal-btc').textContent = fmt(b.btc, 6) + ' BTC';
+    document.getElementById('bal-total').textContent = '$' + fmt(b.totalUsd);
+
+    if (!startBalance && b.totalUsd > 0) startBalance = b.totalUsd;
+    if (startBalance && b.totalUsd) {
+      const pnlUsd = b.totalUsd - startBalance;
+      const pnlPct = pnlUsd / startBalance * 100;
+      const el = document.getElementById('pnl');
+      el.textContent = (pnlUsd >= 0 ? '+' : '') + '$' + fmt(pnlUsd) + ' (' + fmt(pnlPct, 2) + '%)';
+      el.className = 'stat-val ' + (pnlUsd >= 0 ? 'pos' : 'neg');
     }
 
-    function sigClass(s) {
-      if (s === 'BUY') return 'BUY';
-      if (s === 'SELL') return 'SELL';
-      return 'HOLD';
+    // 통계
+    const st = s.stats || {};
+    document.getElementById('s-total').textContent = st.totalTrades || 0;
+    document.getElementById('s-wins').textContent = st.wins || 0;
+    document.getElementById('s-losses').textContent = st.losses || 0;
+    document.getElementById('s-wr').textContent = (st.winRate || 0) + '%';
+    const pnlEl = document.getElementById('s-pnl');
+    pnlEl.textContent = (st.totalPnl >= 0 ? '+' : '') + '$' + fmt(st.totalPnl);
+    pnlEl.className = 'stat-val ' + (st.totalPnl >= 0 ? 'pos' : 'neg');
+
+    // 지표
+    const d = s.indicators || {};
+    if (d.rsi) { document.getElementById('rsi-v').textContent = d.rsi.value || '--'; setSig('rsi-s', d.rsi.signal); }
+    if (d.stochRSI) { document.getElementById('stoch-v').textContent = d.stochRSI.value || '--'; setSig('stoch-s', d.stochRSI.signal); }
+    if (d.macd) { document.getElementById('macd-v').textContent = d.macd.histogram || '--'; setSig('macd-s', d.macd.signal); }
+    if (d.bollinger) { document.getElementById('bb-v').textContent = (d.bollinger.lower||'--') + '/' + (d.bollinger.upper||'--'); setSig('bb-s', d.bollinger.signal); }
+    if (d.ema) { document.getElementById('ema-v').textContent = '$' + (d.ema.ema9||'--') + '/$' + (d.ema.ema21||'--'); setSig('ema-s', d.ema.signal); }
+    if (d.vwap) { document.getElementById('vwap-v').textContent = '$' + (d.vwap.value||'--'); setSig('vwap-s', d.vwap.signal); }
+
+    // Fear & Greed
+    if (d.fearGreed) {
+      const fg = d.fearGreed;
+      const fgEl = document.getElementById('fg-num');
+      fgEl.textContent = fg.value ?? '--';
+      fgEl.style.color = fg.value <= 30 ? '#48bb78' : fg.value >= 70 ? '#f56565' : '#ed8936';
+      document.getElementById('fg-label').textContent = fg.label || '--';
+      document.getElementById('fg-needle').style.left = ((fg.value || 50) / 100 * 100) + '%';
     }
+  }
 
-    function updateState(state) {
-      // 가격
-      document.getElementById('btc-price').textContent = '$' + fmt(state.price);
-      document.getElementById('price-update').textContent = state.lastUpdate
-        ? new Date(state.lastUpdate).toLocaleTimeString('ko-KR') : '--';
-      document.getElementById('last-update').textContent =
-        state.lastUpdate ? new Date(state.lastUpdate).toLocaleTimeString('ko-KR') : '--';
+  function updateTrades(trades) {
+    if (!trades?.length) return;
+    document.getElementById('trades-body').innerHTML = trades.slice(0, 15).map(t => `
+      <tr>
+        <td style="color:#4a5568">${new Date(t.timestamp).toLocaleString('ko-KR')}</td>
+        <td class="${t.side==='BUY'?'buy-col':'sell-col'}">${t.side}</td>
+        <td>$${fmt(t.price, 0)}</td>
+        <td>${fmt(t.volume, 8)}</td>
+        <td>$${fmt(t.usd)}</td>
+        <td><span class="sig-pill ${sc(t.signal)}">${t.signal||'--'}</span></td>
+        <td style="color:#4a5568">${t.votes?.buyCount||0}B / ${t.votes?.sellCount||0}S</td>
+      </tr>`).join('');
+  }
 
-      // 사이클
-      document.getElementById('cycle-count').textContent = state.cycle || 0;
+  function updateCharts(history) {
+    if (!history) return;
 
-      // 상태 도트
-      const dot = document.getElementById('status-dot');
-      dot.className = 'status-dot ' + (state.status === 'running' ? '' : state.status);
+    const prices = history.prices || [];
+    const equity = history.equity || [];
 
-      // 온체인
-      const ob = document.getElementById('onchain-badge');
-      ob.textContent = state.onchain ? 'ERC-8004: ON' : 'ERC-8004: OFF';
-      ob.className = 'onchain-badge' + (state.onchain ? ' active' : '');
+    // 가격 차트
+    priceChart.data.labels = prices.map(p => new Date(p.t).toLocaleTimeString('ko-KR'));
+    priceChart.data.datasets[0].data = prices.map(p => p.v);
 
-      // 시그널
-      const sb = document.getElementById('signal-badge');
-      sb.textContent = state.signal || 'HOLD';
-      sb.className = 'signal-badge ' + sigClass(state.signal);
+    // 매수/매도 점
+    const buyPoints = prices.map((p, i) => p.s === 'BUY' ? { x: i, y: p.v } : null).filter(Boolean);
+    const sellPoints = prices.map((p, i) => p.s === 'SELL' ? { x: i, y: p.v } : null).filter(Boolean);
+    priceChart.data.datasets[1].data = buyPoints;
+    priceChart.data.datasets[2].data = sellPoints;
+    priceChart.update('none');
 
-      // 투표
-      const total = state.votes?.total || 7;
-      const buyPct = ((state.votes?.buyCount || 0) / total * 100).toFixed(0);
-      const sellPct = ((state.votes?.sellCount || 0) / total * 100).toFixed(0);
-      document.getElementById('vote-buy').style.width = buyPct + '%';
-      document.getElementById('vote-sell').style.width = sellPct + '%';
-      document.getElementById('vote-buy-n').textContent = state.votes?.buyCount || 0;
-      document.getElementById('vote-sell-n').textContent = state.votes?.sellCount || 0;
-
-      // 잔고
-      const b = state.balance || {};
-      document.getElementById('bal-usd').textContent = '$' + fmt(b.usd);
-      document.getElementById('bal-btc').textContent = fmt(b.btc, 6) + ' BTC';
-      document.getElementById('bal-total').textContent = '$' + fmt(b.totalUsd);
-
-      // PnL
-      if (!startBalance && b.totalUsd) startBalance = b.totalUsd;
-      if (startBalance && b.totalUsd) {
-        const pnlPct = ((b.totalUsd - startBalance) / startBalance * 100);
-        const pnlUsd = b.totalUsd - startBalance;
-        const el = document.getElementById('pnl');
-        el.textContent = (pnlUsd >= 0 ? '+' : '') + '$' + fmt(pnlUsd) + ' (' + fmt(pnlPct, 2) + '%)';
-        el.className = 'amount ' + (pnlUsd >= 0 ? 'pnl-positive' : 'pnl-negative');
-      }
-
-      // 지표
-      const d = state.indicators || {};
-      if (d.rsi) {
-        document.getElementById('rsi-val').textContent = d.rsi.value || '--';
-        setSig('rsi-sig', d.rsi.signal);
-      }
-      if (d.stochRSI) {
-        document.getElementById('stoch-val').textContent = d.stochRSI.value || '--';
-        setSig('stoch-sig', d.stochRSI.signal);
-      }
-      if (d.macd) {
-        document.getElementById('macd-val').textContent = d.macd.histogram || '--';
-        setSig('macd-sig', d.macd.signal);
-      }
-      if (d.bollinger) {
-        document.getElementById('bb-val').textContent =
-          (d.bollinger.lower || '--') + ' / ' + (d.bollinger.upper || '--');
-        setSig('bb-sig', d.bollinger.signal);
-      }
-      if (d.ema) {
-        document.getElementById('ema-val').textContent =
-          '$' + (d.ema.ema9 || '--') + ' / $' + (d.ema.ema21 || '--');
-        setSig('ema-sig', d.ema.signal);
-      }
-      if (d.vwap) {
-        document.getElementById('vwap-val').textContent = '$' + (d.vwap.value || '--');
-        setSig('vwap-sig', d.vwap.signal);
-      }
-
-      // Fear & Greed
-      if (d.fearGreed) {
-        const fg = d.fearGreed;
-        document.getElementById('fg-value').textContent = fg.value || '--';
-        document.getElementById('fg-label').textContent = fg.label || '--';
-        const pct = ((fg.value || 50) / 100 * 100);
-        document.getElementById('fg-needle').style.left = pct + '%';
-        const fgEl = document.getElementById('fg-value');
-        fgEl.style.color = fg.value <= 30 ? '#48bb78' : fg.value >= 70 ? '#f56565' : '#ed8936';
-      }
+    // 수익 곡선
+    equityChart.data.labels = equity.map(e => new Date(e.t).toLocaleTimeString('ko-KR'));
+    equityChart.data.datasets[0].data = equity.map(e => e.v);
+    if (equity.length > 0) {
+      const first = equity[0].v;
+      const last = equity[equity.length - 1].v;
+      equityChart.data.datasets[0].borderColor = last >= first ? '#48bb78' : '#f56565';
+      equityChart.data.datasets[0].backgroundColor = (last >= first ? '#48bb78' : '#f56565') + '20';
     }
+    equityChart.update('none');
+  }
 
-    function setSig(id, sig) {
-      const el = document.getElementById(id);
-      el.textContent = sig || 'HOLD';
-      el.className = 'sig ' + sigClass(sig);
-    }
+  // SSE
+  const es = new EventSource('/api/stream');
+  es.onmessage = e => { try { updateState(JSON.parse(e.data)); } catch {} };
 
-    function updateTrades(trades) {
-      const tbody = document.getElementById('trades-body');
-      if (!trades || trades.length === 0) return;
-      tbody.innerHTML = trades.slice(0, 20).map(t => `
-        <tr>
-          <td style="color:#718096">${new Date(t.timestamp).toLocaleString('ko-KR')}</td>
-          <td class="${t.side === 'BUY' ? 'badge-buy' : 'badge-sell'}">${t.side}</td>
-          <td>$${fmt(t.price)}</td>
-          <td>${fmt(t.volume, 8)}</td>
-          <td>$${fmt(t.usd)}</td>
-          <td><span class="sig ${sigClass(t.signal)}">${t.signal || '--'}</span></td>
-        </tr>
-      `).join('');
-    }
+  async function refresh() {
+    try {
+      const [trades, history] = await Promise.all([
+        fetch('/api/trades').then(r => r.json()),
+        fetch('/api/history').then(r => r.json()),
+      ]);
+      updateTrades(trades);
+      updateCharts(history);
+    } catch {}
+  }
 
-    // SSE 연결
-    const evtSource = new EventSource('/api/stream');
-    evtSource.onmessage = (e) => {
-      try { updateState(JSON.parse(e.data)); } catch {}
-    };
-
-    // 거래 내역 주기적 로드
-    async function loadTrades() {
-      try {
-        const r = await fetch('/api/trades');
-        updateTrades(await r.json());
-      } catch {}
-    }
-    loadTrades();
-    setInterval(loadTrades, 10000);
-
-    // 초기 상태 로드
-    fetch('/api/state').then(r => r.json()).then(updateState).catch(() => {});
-  </script>
+  fetch('/api/state').then(r => r.json()).then(updateState).catch(() => {});
+  refresh();
+  setInterval(refresh, 10000);
+</script>
 </body>
 </html>

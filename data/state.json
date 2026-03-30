@@ -1,0 +1,64 @@
+{
+  "status": "running",
+  "lastUpdate": "2026-03-30T07:38:36.717Z",
+  "cycle": 1,
+  "price": 67285.6,
+  "signal": "HOLD",
+  "votes": {
+    "buyCount": 1,
+    "sellCount": 1,
+    "total": 7
+  },
+  "indicators": {
+    "rsi": {
+      "signal": "SELL",
+      "value": "75.26"
+    },
+    "stochRSI": {
+      "signal": "HOLD",
+      "value": "50.00"
+    },
+    "macd": {
+      "signal": "HOLD",
+      "histogram": "163.19"
+    },
+    "bollinger": {
+      "signal": "HOLD",
+      "lower": "65718",
+      "upper": "67601"
+    },
+    "ema": {
+      "signal": "HOLD",
+      "ema9": "67048",
+      "ema21": "66803"
+    },
+    "vwap": {
+      "signal": "HOLD"
+    },
+    "fearGreed": {
+      "signal": "BUY",
+      "value": 8,
+      "label": "Extreme Fear"
+    }
+  },
+  "balance": {
+    "usd": 10000,
+    "btc": 0,
+    "totalUsd": 10000
+  },
+  "regime": "bear",
+  "ema200": 68335,
+  "atr": null,
+  "stopLossPrice": null,
+  "lastTrade": null,
+  "stats": {
+    "totalTrades": 0,
+    "wins": 0,
+    "losses": 0,
+    "totalPnl": 0,
+    "winRate": 0
+  },
+  "pnl": {
+    "currentBalance": 10000
+  }
+}

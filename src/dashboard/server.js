@@ -8,25 +8,25 @@ const PORT = process.env.DASHBOARD_PORT || 3001;
 
 const STATE_FILE = path.join(__dirname, '../../data/state.json');
 const TRADES_FILE = path.join(__dirname, '../../data/trades.json');
+const HISTORY_FILE = path.join(__dirname, '../../data/history.json');
+
+const readJson = (file, fallback) => {
+  if (!fs.existsSync(file)) return fallback;
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
+};
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/state', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  if (fs.existsSync(STATE_FILE)) {
-    res.send(fs.readFileSync(STATE_FILE, 'utf8'));
-  } else {
-    res.json({ status: 'starting', lastUpdate: null });
-  }
+app.get('/api/state', (_req, res) => {
+  res.json(readJson(STATE_FILE, { status: 'starting', lastUpdate: null }));
 });
 
-app.get('/api/trades', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  if (fs.existsSync(TRADES_FILE)) {
-    res.send(fs.readFileSync(TRADES_FILE, 'utf8'));
-  } else {
-    res.json([]);
-  }
+app.get('/api/trades', (_req, res) => {
+  res.json(readJson(TRADES_FILE, []));
+});
+
+app.get('/api/history', (_req, res) => {
+  res.json(readJson(HISTORY_FILE, { prices: [], equity: [] }));
 });
 
 // SSE: 실시간 상태 스트림
@@ -37,10 +37,8 @@ app.get('/api/stream', (req, res) => {
   res.flushHeaders();
 
   const send = () => {
-    if (fs.existsSync(STATE_FILE)) {
-      const data = fs.readFileSync(STATE_FILE, 'utf8');
-      res.write(`data: ${data}\n\n`);
-    }
+    const data = readJson(STATE_FILE, { status: 'starting' });
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
   send();
