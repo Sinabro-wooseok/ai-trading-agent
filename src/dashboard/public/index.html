@@ -335,11 +335,17 @@ const I18N = {
 };
 
 let lang = 'ko';
+let lastState = null;
+let lastTrades = null;
+
 function toggleLang() {
   lang = lang === 'ko' ? 'en' : 'ko';
   document.getElementById('lang-btn').textContent = lang === 'ko' ? 'EN' : 'KO';
   document.documentElement.lang = lang;
   applyI18n();
+  // 동적 콘텐츠 즉시 재렌더링
+  if (lastState)  updateState(lastState);
+  if (lastTrades) updateTrades(lastTrades);
 }
 function t(key) { return I18N[lang][key] || key; }
 function applyI18n() {
@@ -399,6 +405,7 @@ function updatePnL(totalUsd) {
 
 // ==================== 상태 업데이트 ====================
 function updateState(s) {
+  lastState = s;
   document.getElementById('price').textContent = '$' + fmt(s.price, 0);
   document.getElementById('price-time').textContent = s.lastUpdate ? new Date(s.lastUpdate).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US') : '--';
   document.getElementById('last-up').textContent = s.lastUpdate ? new Date(s.lastUpdate).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US') : '--';
@@ -518,6 +525,7 @@ function calcTradePnL(trades) {
 
 function updateTrades(trades) {
   if (!trades?.length) return;
+  lastTrades = trades;
   const pnlMap = calcTradePnL(trades);
 
   // 통계
