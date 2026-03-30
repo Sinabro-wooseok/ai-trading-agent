@@ -8,8 +8,8 @@ const { canTrade, setDailyBaseline } = require('../risk/manager');
 const { signTradeIntent } = require('../signing/eip712');
 const { getMarketRegime, applyTrendFilter } = require('../strategies/trend');
 
-const BUY_THRESHOLD = 60;
-const SELL_THRESHOLD = 40;
+const BUY_THRESHOLD = 45;   // combined.js와 동기화 (60→45)
+const SELL_THRESHOLD = 30;  // 40→30
 const { saveState, saveTrade, savePricePoint } = require('./state');
 
 // 학습 모듈
@@ -125,10 +125,15 @@ async function runCycle() {
       return;
     }
 
+    // 60분봉: 추세 방향 판단
     const candles = getOHLC(PAIR, 60);
     const closes = extractCloses(Array.isArray(candles) ? candles : []);
 
-    // 200 EMA 추세 필터
+    // 15분봉: 진입 타이밍 (더 민감한 시그널)
+    const candles15m = getOHLC(PAIR, 15);
+    const closes15m = extractCloses(Array.isArray(candles15m) ? candles15m : []);
+
+    // 200 EMA 추세 필터 (60분봉 기준)
     const { regime, ema200 } = getMarketRegime(closes, currentPrice);
     console.log(`[추세] ${regime.toUpperCase()} | EMA200: $${ema200 ? ema200.toFixed(0) : '--'}`);
 
@@ -137,11 +142,18 @@ async function runCycle() {
       ? tune(loadTrades(), calcATR(candles))
       : getParams();
 
-    // 복합 시그널 (가중치 투표 v3)
+    // 60분봉 복합 시그널 (추세 확인)
     const result = await getCombinedSignal(closes, candles, params.voteThreshold);
     const { signal: rawSignal, votes, detail, weights, fgMultiplier: fgMultiplier_ } = result;
 
-    // 추세 필터 적용
+    // 15분봉 복합 시그널 (진입 타이밍)
+    let result15m = { signal: 'HOLD', votes: {} };
+    if (closes15m.length >= 30) {
+      result15m = await getCombinedSignal(closes15m, candles15m, params.voteThreshold);
+    }
+    console.log(`[15분봉] ${result15m.signal} | 매수점:${result15m.votes?.weightedBuy ?? 0} 매도점:${result15m.votes?.weightedSell ?? 0}`);
+
+    // 추세 필터 적용 (60분봉 기준)
     const filteredSignal = applyTrendFilter(rawSignal, regime);
     if (filteredSignal !== rawSignal) console.log(`[추세 필터] ${rawSignal} → HOLD`);
 
@@ -163,9 +175,20 @@ async function runCycle() {
     const qAction = getAction(qState, allowedActions);
     const qInfo = qStats();
 
-    // 최종 시그널: 추세필터 통과 후 Q-Learning 검증
-    // Q가 HOLD 권고 시 필터링 (탐색 중 무작위면 무시)
-    const finalSignal = qAction !== 'HOLD' ? qAction : filteredSignal === qAction ? filteredSignal : 'HOLD';
+    // 15분봉 방향 일치 확인 (필터링 강화)
+    // 60분봉이 BUY인데 15분봉이 SELL이면 진입 보류
+    const mtfSignal = (() => {
+      if (filteredSignal === 'HOLD') return 'HOLD';
+      if (result15m.signal === 'HOLD') return filteredSignal; // 15분봉 HOLD → 60분봉 따름
+      if (result15m.signal !== filteredSignal) {
+        console.log(`[MTF 필터] 60분:${filteredSignal} vs 15분:${result15m.signal} → HOLD`);
+        return 'HOLD';
+      }
+      return filteredSignal; // 방향 일치 → 진입 확정
+    })();
+
+    // 최종 시그널: 추세필터 → MTF 확인 → Q-Learning 검증
+    const finalSignal = qAction !== 'HOLD' ? qAction : mtfSignal === qAction ? mtfSignal : 'HOLD';
 
     console.log(`  Q-Learning → ${qAction} (ε:${qInfo.epsilon} 학습:${qInfo.totalUpdates}회 상태:${qInfo.stateCount}개)`);
 
