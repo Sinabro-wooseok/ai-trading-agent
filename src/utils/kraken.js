@@ -24,8 +24,14 @@ const PAPER_MODE = process.env.PAPER_MODE !== 'false';
 function getBalance() {
   if (PAPER_MODE) {
     const status = kraken('paper status');
-    const usd = status?.find?.(r => r.Field === 'Current Value')?.Value || '10000.00 USD';
-    return { ZUSD: parseFloat(usd) };
+    // {"current_value":9981, "starting_balance":10000, "unrealized_pnl":-18, ...}
+    return {
+      ZUSD: status?.current_value ?? 10000,
+      startingBalance: status?.starting_balance ?? 10000,
+      unrealizedPnl: status?.unrealized_pnl ?? 0,
+      unrealizedPnlPct: status?.unrealized_pnl_pct ?? 0,
+      totalTrades: status?.total_trades ?? 0,
+    };
   }
   return kraken('balance');
 }

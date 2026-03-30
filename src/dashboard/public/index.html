@@ -384,23 +384,25 @@ priceChart.data.datasets.push({ type:'scatter', label:'BUY',  data:[], backgroun
 priceChart.data.datasets.push({ type:'scatter', label:'SELL', data:[], backgroundColor:'#f56565', pointRadius:5, pointStyle:'rectRot' });
 
 // ==================== 수익률 ====================
-let startBalance = null;
+function updatePnL(balance) {
+  const totalUsd  = balance?.totalUsd ?? 0;
+  const startBal  = balance?.startingBalance ?? 10000;
+  const pnlUsd    = balance?.unrealizedPnl ?? (totalUsd - startBal);
+  const pnlPct    = balance?.unrealizedPnlPct != null
+    ? balance.unrealizedPnlPct * 100
+    : (pnlUsd / startBal * 100);
 
-function updatePnL(totalUsd) {
-  if (!startBalance && totalUsd > 0) startBalance = totalUsd;
-  if (!startBalance) return;
+  if (!totalUsd) return;
 
-  const pnlUsd = totalUsd - startBalance;
-  const pnlPct = pnlUsd / startBalance * 100;
-  const cls = pnlUsd > 0 ? 'pos' : pnlUsd < 0 ? 'neg' : 'neutral';
+  const cls  = pnlUsd > 0 ? 'pos' : pnlUsd < 0 ? 'neg' : 'neutral';
   const sign = pnlUsd >= 0 ? '+' : '';
 
-  document.getElementById('pnl-big').textContent = sign + '$' + fmt(Math.abs(pnlUsd));
+  document.getElementById('pnl-big').textContent = sign + '$' + fmt(Math.abs(pnlUsd), 2);
   document.getElementById('pnl-big').className = 'pnl-big ' + cls;
   document.getElementById('pnl-pct').textContent = sign + fmt(pnlPct, 2) + '%';
   document.getElementById('pnl-pct').className = 'pnl-sub ' + cls;
-  document.getElementById('start-bal').textContent = '$' + fmt(startBalance);
-  document.getElementById('cur-bal').textContent = '$' + fmt(totalUsd);
+  document.getElementById('start-bal').textContent = '$' + fmt(startBal);
+  document.getElementById('cur-bal').textContent  = '$' + fmt(totalUsd);
 }
 
 // ==================== 상태 업데이트 ====================
@@ -448,7 +450,7 @@ function updateState(s) {
   const b = s.balance || {};
   document.getElementById('bal-usd').textContent = '$' + fmt(b.usd);
   document.getElementById('bal-btc').textContent = fmt(b.btc, 6) + ' BTC';
-  updatePnL(b.totalUsd);
+  updatePnL(b);
 
   // 지표
   const d = s.indicators || {};

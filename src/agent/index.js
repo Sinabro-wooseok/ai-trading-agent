@@ -107,9 +107,13 @@ async function runCycle() {
 
   try {
     const balance = getBalance();
+    // 페이퍼 모드: current_value = 현재 총자산(USD+BTC 환산), startingBalance = 시작잔고
     const usdBalance = parseFloat(balance?.ZUSD || balance?.USD || 0);
     const btcBalance = parseFloat(balance?.XXBT || balance?.XBT || 0);
-    console.log(`[잔고] USD: $${usdBalance.toFixed(2)}, BTC: ${btcBalance.toFixed(6)}`);
+    const startingBalance = balance?.startingBalance ?? 10000;
+    const unrealizedPnl = balance?.unrealizedPnl ?? 0;
+    const unrealizedPnlPct = balance?.unrealizedPnlPct ?? 0;
+    console.log(`[잔고] 총자산: $${usdBalance.toFixed(2)} | PnL: ${unrealizedPnl >= 0 ? '+' : ''}$${unrealizedPnl.toFixed(2)} (${(unrealizedPnlPct * 100).toFixed(2)}%)`);
 
     if (usdBalance < 1 && btcBalance < 0.0001) {
       saveState({ status: 'warning', balance: { usd: usdBalance, btc: btcBalance, totalUsd: 0 } });
@@ -203,7 +207,14 @@ async function runCycle() {
       rawSignal,
       votes,
       indicators: detail,
-      balance: { usd: usdBalance, btc: btcBalance, totalUsd: totalUSD },
+      balance: {
+        usd: usdBalance,
+        btc: btcBalance,
+        totalUsd: totalUSD,
+        startingBalance,
+        unrealizedPnl,
+        unrealizedPnlPct,
+      },
       regime,
       ema200: ema200 ? parseFloat(ema200.toFixed(0)) : null,
       atr: atr ? parseFloat(atr.toFixed(2)) : null,
