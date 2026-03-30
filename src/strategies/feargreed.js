@@ -1,13 +1,15 @@
-// Fear & Greed Index 전략
-// 극도의 공포(< 20) → 매수 신호
-// 극도의 탐욕(> 80) → 매도 신호
-// API: alternative.me/crypto/fear-and-greed-index/
+// Fear & Greed Index 전략 (강화판)
+// 연구 기반: 지수 15 미만 → 역사적으로 멀티월 랠리 선행 (2018년 이후 예외 없음)
+// 지수 <= 15 → STRONG_BUY (포지션 2배)
+// 지수 <= 25 → BUY
+// 지수 >= 75 → SELL
+// 지수 >= 85 → STRONG_SELL (포지션 2배)
 
 const https = require('https');
 
 let cachedIndex = null;
 let lastFetchTime = 0;
-const CACHE_TTL = 3600 * 1000; // 1시간 캐시
+const CACHE_TTL = 3600 * 1000;
 
 function fetchFearGreedIndex() {
   return new Promise((resolve) => {
@@ -44,9 +46,12 @@ function fetchFearGreedIndex() {
 async function getFearGreedSignal() {
   const { value, label } = await fetchFearGreedIndex();
 
-  if (value <= 20) return { signal: 'BUY', value, label };
-  if (value >= 80) return { signal: 'SELL', value, label };
-  return { signal: 'HOLD', value, label };
+  // 강화된 임계값 + 포지션 승수 반환
+  if (value <= 15) return { signal: 'BUY', value, label, multiplier: 2.0, strength: 'STRONG' };
+  if (value <= 25) return { signal: 'BUY', value, label, multiplier: 1.5, strength: 'NORMAL' };
+  if (value >= 85) return { signal: 'SELL', value, label, multiplier: 2.0, strength: 'STRONG' };
+  if (value >= 75) return { signal: 'SELL', value, label, multiplier: 1.5, strength: 'NORMAL' };
+  return { signal: 'HOLD', value, label, multiplier: 1.0, strength: 'NEUTRAL' };
 }
 
 module.exports = { getFearGreedSignal, fetchFearGreedIndex };

@@ -1,53 +1,58 @@
 {
   "status": "running",
-  "lastUpdate": "2026-03-30T07:49:04.220Z",
+  "lastUpdate": "2026-03-30T10:45:29.029Z",
   "cycle": 1,
-  "price": 67343.6,
+  "price": 67360.2,
   "signal": "HOLD",
   "votes": {
     "buyCount": 1,
     "sellCount": 1,
     "total": 7,
-    "buyScore": 1,
-    "sellScore": 1
+    "buyScore": 30,
+    "sellScore": 25,
+    "weightedBuy": 30,
+    "weightedSell": 25
   },
   "indicators": {
     "rsi": {
-      "signal": "SELL",
-      "value": "75.26",
+      "signal": "HOLD",
+      "value": "61.06",
       "weight": "1.00"
     },
     "stochRSI": {
-      "signal": "HOLD",
-      "value": "50.00",
+      "signal": "SELL",
+      "value": "84.16",
       "weight": "1.00"
     },
     "macd": {
       "signal": "HOLD",
-      "histogram": "167.30",
+      "histogram": "101.72",
       "weight": "1.00"
     },
     "bollinger": {
       "signal": "HOLD",
-      "lower": "65713",
-      "upper": "67612",
+      "lower": "65671",
+      "upper": "67932",
       "weight": "1.00"
     },
     "ema": {
       "signal": "HOLD",
-      "ema9": "67059",
-      "ema21": "66809",
+      "ema9": "67273",
+      "ema21": "66986",
       "weight": "1.00"
     },
     "vwap": {
       "signal": "HOLD",
+      "value": "69849",
       "weight": "1.00"
     },
     "fearGreed": {
       "signal": "BUY",
       "value": 8,
       "label": "Extreme Fear",
-      "weight": "1.00"
+      "weight": "1.00",
+      "multiplier": 2,
+      "strength": "STRONG"
     }
   },
   "balance": {
@@ -56,8 +61,8 @@
     "totalUsd": 10000
   },
   "regime": "bear",
-  "ema200": 68336,
-  "atr": null,
+  "ema200": 68313,
+  "atr": 552.21,
   "stopLossPrice": null,
   "lastTrade": null,
   "stats": {
@@ -81,11 +86,11 @@
       "vwap": 1,
       "fearGreed": 1
     },
-    "qState": "r2_m1_t0_f0",
+    "qState": "r1_m1_t0_f0",
     "qAction": "HOLD",
-    "qEpsilon": 0.3,
-    "qUpdates": 0,
-    "qStates": 0,
+    "qEpsilon": 0.196,
+    "qUpdates": 85,
+    "qStates": 2,
     "threshold": 3,
     "stopLossPct": 0.03,
     "positionRiskPct": 0.01,

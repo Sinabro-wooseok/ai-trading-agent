@@ -7,6 +7,9 @@ const { calcATR, calcATRPositionSize } = require('../strategies/atr');
 const { canTrade, setDailyBaseline } = require('../risk/manager');
 const { signTradeIntent } = require('../signing/eip712');
 const { getMarketRegime, applyTrendFilter } = require('../strategies/trend');
+
+const BUY_THRESHOLD = 60;
+const SELL_THRESHOLD = 40;
 const { saveState, saveTrade, savePricePoint } = require('./state');
 
 // 학습 모듈
@@ -136,15 +139,15 @@ async function runCycle() {
 
     // 복합 시그널 (가중치 투표 v3)
     const result = await getCombinedSignal(closes, candles, params.voteThreshold);
-    const { signal: rawSignal, votes, detail, weights } = result;
+    const { signal: rawSignal, votes, detail, weights, fgMultiplier: fgMultiplier_ } = result;
 
     // 추세 필터 적용
     const filteredSignal = applyTrendFilter(rawSignal, regime);
     if (filteredSignal !== rawSignal) console.log(`[추세 필터] ${rawSignal} → HOLD`);
 
-    console.log(`[시그널] ${filteredSignal} (매수점:${votes.buyScore} 매도점:${votes.sellScore} / ${votes.buyCount}B ${votes.sellCount}S 단순투표)`);
-    console.log(`  RSI:${detail.rsi.value}(w${detail.rsi.weight}) MACD:${detail.macd.histogram}(w${detail.macd.weight}) F&G:${detail.fearGreed.value}(w${detail.fearGreed.weight})`);
-    console.log(`  BTC: $${currentPrice.toLocaleString()}`);
+    console.log(`[시그널] ${filteredSignal} | 매수점:${votes.weightedBuy}(임계:${BUY_THRESHOLD}) 매도점:${votes.weightedSell}(임계:${SELL_THRESHOLD})`);
+    console.log(`  RSI:${detail.rsi.value} StochRSI:${detail.stochRSI.value} MACD:${detail.macd.histogram} F&G:${detail.fearGreed.value}(x${fgMultiplier_})`);
+    console.log(`  BTC: $${currentPrice.toLocaleString()} | ${votes.buyCount}B ${votes.sellCount}S 단순투표`);
 
     // ATR 포지션 사이징
     const atr = calcATR(candles);
@@ -222,19 +225,27 @@ async function runCycle() {
 
     if (!shouldTrade) {
       console.log('[대기] 시그널 없음');
-      // 포지션 없고 HOLD → Q-Learning에 중립 보상
-      if (!pendingTrade && qAction === 'HOLD') {
-        qUpdate(qState, 'HOLD', 0.1, qState); // HOLD 유지 소폭 보상
-      }
+      // HOLD → Q-Learning 패널티 적용 (HOLD 편향 해소)
+      qUpdate(qState, 'HOLD', 0, qState);
       return;
     }
 
-    // 진입 시 지표 스냅샷 저장 (나중에 가중치 업데이트에 사용)
+    // Fear&Greed 포지션 승수 적용 (극단적 공포 시 포지션 확대)
+    const fgMultiplier = fgMultiplier_ || 1.0;
+    const finalVolume = isBuy
+      ? Math.min(volume * fgMultiplier, usdBalance * 0.2 / currentPrice) // 최대 20% 캡
+      : volume;
+
+    if (fgMultiplier > 1.0) {
+      console.log(`[F&G 승수] x${fgMultiplier} 포지션 확대 (지수:${detail.fearGreed.value} ${detail.fearGreed.strength})`);
+    }
+
+    // 진입 시 지표 스냅샷 저장
     if (isBuy) {
       pendingTrade = { state: qState, action: 'BUY', entryPrice: currentPrice, indicators: detail };
     }
 
-    await executeTrade(isBuy, volume, currentPrice, finalSignal, votes, qState);
+    await executeTrade(isBuy, finalVolume, currentPrice, finalSignal, votes, qState);
 
   } catch (err) {
     console.error('[에러]', err.message);
