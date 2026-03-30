@@ -198,6 +198,30 @@
     <div style="text-align:center;margin-top:6px;font-size:12px;color:#a0aec0" id="fg-label">--</div>
   </div>
 
+  <!-- 학습 현황 -->
+  <div class="card col4">
+    <h3>Q-Learning 현황</h3>
+    <div class="stat-row"><span class="stat-label">탐색률 (ε)</span><span class="stat-val" id="q-eps">--</span></div>
+    <div class="stat-row"><span class="stat-label">학습 횟수</span><span class="stat-val" id="q-upd">0</span></div>
+    <div class="stat-row"><span class="stat-label">탐색 상태 수</span><span class="stat-val" id="q-states">0</span></div>
+    <div class="stat-row"><span class="stat-label">현재 상태</span><span class="stat-val" id="q-state" style="font-size:10px;color:#63b3ed">--</span></div>
+    <div class="stat-row"><span class="stat-label">Q 권고</span><span class="stat-val" id="q-action">HOLD</span></div>
+  </div>
+
+  <div class="card col4">
+    <h3>자동 파라미터 튜닝</h3>
+    <div class="stat-row"><span class="stat-label">투표 임계값</span><span class="stat-val" id="p-thresh">3<span style="color:#4a5568">/7</span></span></div>
+    <div class="stat-row"><span class="stat-label">손절 비율</span><span class="stat-val" id="p-sl">3.0%</span></div>
+    <div class="stat-row"><span class="stat-label">포지션 리스크</span><span class="stat-val" id="p-risk">1.0%</span></div>
+    <div style="margin-top:8px;font-size:10px;color:#4a5568">최근 조정 이력</div>
+    <div id="tune-history" style="font-size:10px;color:#718096;margin-top:4px"></div>
+  </div>
+
+  <div class="card col4">
+    <h3>지표 가중치 (학습됨)</h3>
+    <div id="weights-bars"></div>
+  </div>
+
   <!-- 최근 거래 -->
   <div class="card col12">
     <h3>최근 거래 내역</h3>
@@ -327,6 +351,43 @@
       fgEl.style.color = fg.value <= 30 ? '#48bb78' : fg.value >= 70 ? '#f56565' : '#ed8936';
       document.getElementById('fg-label').textContent = fg.label || '--';
       document.getElementById('fg-needle').style.left = ((fg.value || 50) / 100 * 100) + '%';
+    }
+
+    // 학습 현황
+    const L = s.learning || {};
+    if (L.qEpsilon !== undefined) {
+      document.getElementById('q-eps').textContent = (L.qEpsilon * 100).toFixed(1) + '%';
+      document.getElementById('q-upd').textContent = L.qUpdates || 0;
+      document.getElementById('q-states').textContent = L.qStates || 0;
+      document.getElementById('q-state').textContent = L.qState || '--';
+      const qa = document.getElementById('q-action');
+      qa.textContent = L.qAction || 'HOLD';
+      qa.className = 'stat-val ' + sc(L.qAction);
+    }
+    if (L.threshold !== undefined) {
+      document.getElementById('p-thresh').innerHTML = L.threshold + '<span style="color:#4a5568">/7</span>';
+      document.getElementById('p-sl').textContent = ((L.stopLossPct || 0.03) * 100).toFixed(1) + '%';
+      document.getElementById('p-risk').textContent = ((L.positionRiskPct || 0.01) * 100).toFixed(2) + '%';
+    }
+    if (L.tuneHistory?.length) {
+      document.getElementById('tune-history').innerHTML = L.tuneHistory.slice(0, 3).map(h =>
+        `<div style="padding:2px 0;border-bottom:1px solid #1a2030">${new Date(h.time).toLocaleTimeString('ko-KR')} 승률${h.winRate}% → ${h.changes.join(', ')}</div>`
+      ).join('');
+    }
+    if (L.weights) {
+      const IND_NAMES = { rsi:'RSI', stochRSI:'StochRSI', macd:'MACD', bollinger:'BB', ema:'EMA', vwap:'VWAP', fearGreed:'F&G' };
+      const maxW = Math.max(...Object.values(L.weights));
+      document.getElementById('weights-bars').innerHTML = Object.entries(L.weights).map(([k, w]) => {
+        const pct = (w / maxW * 100).toFixed(0);
+        const color = w >= 1.5 ? '#48bb78' : w <= 0.5 ? '#f56565' : '#63b3ed';
+        return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:11px">
+          <span style="width:54px;color:#718096">${IND_NAMES[k]||k}</span>
+          <div style="flex:1;background:#0d1526;border-radius:3px;height:14px">
+            <div style="width:${pct}%;background:${color};height:100%;border-radius:3px;transition:width 0.5s"></div>
+          </div>
+          <span style="width:32px;color:${color}">${Number(w).toFixed(2)}</span>
+        </div>`;
+      }).join('');
     }
   }
 

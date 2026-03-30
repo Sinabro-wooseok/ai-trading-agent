@@ -9,13 +9,19 @@ const { signTradeIntent } = require('../signing/eip712');
 const { getMarketRegime, applyTrendFilter } = require('../strategies/trend');
 const { saveState, saveTrade, savePricePoint } = require('./state');
 
+// 학습 모듈
+const { updateWeights } = require('../learning/weights');
+const { buildState, getAction, update: qUpdate, getStats: qStats } = require('../learning/qtable');
+const { getParams, tune } = require('../learning/tuner');
+
 const PAIR = 'XBTUSD';
-const INTERVAL_MS = 60 * 1000; // 1분마다 실행
-const STOP_LOSS_PCT = 0.03;    // 3% 손절
-const TRADE_COOLDOWN_MS = 5 * 60 * 1000; // 거래 후 5분 쿨다운
+const INTERVAL_MS = 60 * 1000;
+const TUNE_INTERVAL = 10; // 10사이클마다 파라미터 튜닝
 let cycleCount = 0;
 let lastTradeTime = 0;
-let entryPrice = null; // 매수 진입가
+
+// 포지션 추적 (학습에 사용)
+let pendingTrade = null; // { state, action, entryPrice, indicators }
 
 // ERC-8004 온체인 설정
 const ONCHAIN_ENABLED = !!(process.env.AGENT_PRIVATE_KEY && process.env.TRADE_VALIDATOR_ADDRESS);
@@ -31,65 +37,78 @@ if (ONCHAIN_ENABLED) {
   console.log(`[ERC-8004] 온체인 서명 활성화: ${signer.address}`);
 }
 
-async function executeTrade(isBuy, volume, currentPrice, signal, votes) {
+// 파일에서 거래 내역 로드
+function loadTrades() {
+  const fs = require('fs');
+  const path = require('path');
+  const f = path.join(__dirname, '../../data/trades.json');
+  if (!fs.existsSync(f)) return [];
+  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return []; }
+}
+
+async function executeTrade(isBuy, volume, currentPrice, signal, votes, currentState) {
   if (ONCHAIN_ENABLED) {
     const { signature } = await signTradeIntent({
       signer,
       validatorAddress: process.env.TRADE_VALIDATOR_ADDRESS,
       agentId: process.env.AGENT_ID || 1,
-      pair: PAIR,
-      volume,
-      isBuy,
-      price: currentPrice,
-      nonce: tradeNonce,
+      pair: PAIR, volume, isBuy, price: currentPrice, nonce: tradeNonce,
     });
     tradeNonce++;
-    console.log(`[ERC-8004] TradeIntent 서명 (nonce: ${tradeNonce - 1}) ${signature.slice(0, 20)}...`);
+    console.log(`[ERC-8004] TradeIntent 서명 (nonce:${tradeNonce - 1}) ${signature.slice(0, 20)}...`);
   }
 
   const side = isBuy ? '매수' : '매도';
-  console.log(`[${side}] ${volume.toFixed(8)} BTC @ $${currentPrice.toLocaleString()} (ATR 기반 사이징)`);
+  const params = getParams();
+  console.log(`[${side}] ${volume.toFixed(8)} BTC @ $${currentPrice.toLocaleString()} [임계:${params.voteThreshold}/7 손절:${(params.stopLossPct*100).toFixed(1)}%]`);
 
   const orderResult = isBuy
     ? buyMarket(PAIR, volume.toFixed(8))
     : sellMarket(PAIR, volume.toFixed(8));
-
   console.log('[주문 완료]', JSON.stringify(orderResult));
 
-  saveTrade({
-    side: isBuy ? 'BUY' : 'SELL',
-    pair: PAIR,
-    volume: parseFloat(volume.toFixed(8)),
-    price: currentPrice,
-    usd: volume * currentPrice,
-    signal,
-    votes,
-  });
+  saveTrade({ side: isBuy ? 'BUY' : 'SELL', pair: PAIR, volume: parseFloat(volume.toFixed(8)), price: currentPrice, usd: volume * currentPrice, signal, votes });
   saveState({ lastTrade: { side: isBuy ? 'BUY' : 'SELL', price: currentPrice, volume, time: new Date().toISOString() } });
   lastTradeTime = Date.now();
 
   if (isBuy) {
-    entryPrice = currentPrice;
-    saveState({ stopLossPrice: currentPrice * (1 - STOP_LOSS_PCT) });
+    pendingTrade = { state: currentState, action: 'BUY', entryPrice: currentPrice };
+    const params2 = getParams();
+    saveState({ stopLossPrice: currentPrice * (1 - params2.stopLossPct) });
   } else {
-    entryPrice = null;
+    // SELL: 학습 업데이트
+    if (pendingTrade) {
+      const pnlPct = (currentPrice - pendingTrade.entryPrice) / pendingTrade.entryPrice * 100;
+      const outcome = pnlPct > 0 ? 'win' : 'loss';
+      console.log(`[결과] 진입 $${pendingTrade.entryPrice.toLocaleString()} → 청산 $${currentPrice.toLocaleString()} | PnL: ${pnlPct.toFixed(2)}% (${outcome})`);
+
+      // 레벨 1: 가중치 업데이트 (마지막 BUY 시점의 지표 필요 → 상태에서 복원)
+      // pendingTrade에 지표 저장되어 있으면 업데이트
+      if (pendingTrade.indicators) {
+        updateWeights(pendingTrade.indicators, 'BUY', outcome);
+      }
+
+      // 레벨 2: Q-Table 업데이트
+      qUpdate(pendingTrade.state, pendingTrade.action, pnlPct, currentState);
+    }
+    pendingTrade = null;
     saveState({ stopLossPrice: null });
   }
+
+  return orderResult;
 }
 
 async function runCycle() {
   cycleCount++;
-  console.log(`\n[${new Date().toISOString()}] 사이클 시작 (#${cycleCount})`);
+  console.log(`\n[${new Date().toISOString()}] 사이클 #${cycleCount}`);
 
   try {
-    // 잔고 조회
     const balance = getBalance();
     const usdBalance = parseFloat(balance?.ZUSD || balance?.USD || 0);
     const btcBalance = parseFloat(balance?.XXBT || balance?.XBT || 0);
     console.log(`[잔고] USD: $${usdBalance.toFixed(2)}, BTC: ${btcBalance.toFixed(6)}`);
 
     if (usdBalance < 1 && btcBalance < 0.0001) {
-      console.log('[경고] 잔고 부족 - 스킵');
       saveState({ status: 'warning', balance: { usd: usdBalance, btc: btcBalance, totalUsd: 0 } });
       return;
     }
@@ -99,12 +118,10 @@ async function runCycle() {
     setDailyBaseline(totalUSD);
 
     if (!canTrade(totalUSD)) {
-      console.log('[리스크] 오늘 거래 중단');
       saveState({ status: 'halted', price: currentPrice, balance: { usd: usdBalance, btc: btcBalance, totalUsd: totalUSD } });
       return;
     }
 
-    // OHLC 데이터 (캔들 포함)
     const candles = getOHLC(PAIR, 60);
     const closes = extractCloses(Array.isArray(candles) ? candles : []);
 
@@ -112,53 +129,84 @@ async function runCycle() {
     const { regime, ema200 } = getMarketRegime(closes, currentPrice);
     console.log(`[추세] ${regime.toUpperCase()} | EMA200: $${ema200 ? ema200.toFixed(0) : '--'}`);
 
-    // 복합 시그널 계산 (7개 지표)
-    const result = await getCombinedSignal(closes, candles);
-    const { signal: rawSignal, votes, detail } = result;
+    // 레벨 3: 파라미터 자동 튜닝 (N사이클마다)
+    const params = cycleCount % TUNE_INTERVAL === 0
+      ? tune(loadTrades(), calcATR(candles))
+      : getParams();
+
+    // 복합 시그널 (가중치 투표 v3)
+    const result = await getCombinedSignal(closes, candles, params.voteThreshold);
+    const { signal: rawSignal, votes, detail, weights } = result;
 
     // 추세 필터 적용
-    const signal = applyTrendFilter(rawSignal, regime);
-    if (signal !== rawSignal) console.log(`[추세 필터] ${rawSignal} → HOLD (추세 반대)`);
+    const filteredSignal = applyTrendFilter(rawSignal, regime);
+    if (filteredSignal !== rawSignal) console.log(`[추세 필터] ${rawSignal} → HOLD`);
 
-    console.log(`[시그널] ${signal} (매수:${votes.buyCount} 매도:${votes.sellCount} / 7표)`);
-    console.log(`  RSI:${detail.rsi.value} StochRSI:${detail.stochRSI.value} MACD:${detail.macd.histogram}`);
-    console.log(`  EMA:${detail.ema.signal} VWAP:${detail.vwap.signal} F&G:${detail.fearGreed.value}(${detail.fearGreed.label})`);
+    console.log(`[시그널] ${filteredSignal} (매수점:${votes.buyScore} 매도점:${votes.sellScore} / ${votes.buyCount}B ${votes.sellCount}S 단순투표)`);
+    console.log(`  RSI:${detail.rsi.value}(w${detail.rsi.weight}) MACD:${detail.macd.histogram}(w${detail.macd.weight}) F&G:${detail.fearGreed.value}(w${detail.fearGreed.weight})`);
     console.log(`  BTC: $${currentPrice.toLocaleString()}`);
 
-    // ATR 기반 포지션 사이징
+    // ATR 포지션 사이징
     const atr = calcATR(candles);
-    const atrVolume = atr ? calcATRPositionSize(usdBalance, currentPrice, atr) : usdBalance * 0.05 / currentPrice;
+    const atrVolume = atr
+      ? calcATRPositionSize(usdBalance, currentPrice, atr, params.positionRiskPct)
+      : usdBalance * 0.05 / currentPrice;
 
-    // 상태 저장 (대시보드용)
+    // Q-Learning 상태 & 행동
+    const qState = buildState(detail, regime, currentPrice);
+    const allowedActions = filteredSignal === 'BUY' ? ['BUY', 'HOLD']
+      : filteredSignal === 'SELL' ? ['SELL', 'HOLD']
+      : ['HOLD'];
+    const qAction = getAction(qState, allowedActions);
+    const qInfo = qStats();
+
+    // 최종 시그널: 추세필터 통과 후 Q-Learning 검증
+    // Q가 HOLD 권고 시 필터링 (탐색 중 무작위면 무시)
+    const finalSignal = qAction !== 'HOLD' ? qAction : filteredSignal === qAction ? filteredSignal : 'HOLD';
+
+    console.log(`  Q-Learning → ${qAction} (ε:${qInfo.epsilon} 학습:${qInfo.totalUpdates}회 상태:${qInfo.stateCount}개)`);
+
+    // 상태 저장
     saveState({
       status: 'running',
       cycle: cycleCount,
       price: currentPrice,
-      signal,
+      signal: finalSignal,
+      rawSignal,
       votes,
       indicators: detail,
       balance: { usd: usdBalance, btc: btcBalance, totalUsd: totalUSD },
       regime,
       ema200: ema200 ? parseFloat(ema200.toFixed(0)) : null,
       atr: atr ? parseFloat(atr.toFixed(2)) : null,
+      learning: {
+        weights,
+        qState,
+        qAction,
+        qEpsilon: qInfo.epsilon,
+        qUpdates: qInfo.totalUpdates,
+        qStates: qInfo.stateCount,
+        threshold: params.voteThreshold,
+        stopLossPct: params.stopLossPct,
+        positionRiskPct: params.positionRiskPct,
+        tuneHistory: params.history || [],
+      },
     });
+    savePricePoint(currentPrice, finalSignal, totalUSD);
 
-    // 가격 히스토리 저장 (차트용)
-    savePricePoint(currentPrice, signal, totalUSD);
-
-    // 손절 체크: 매수 포지션이 있고 가격이 손절선 아래
-    if (btcBalance > 0.0001 && entryPrice) {
-      const stopLoss = entryPrice * (1 - STOP_LOSS_PCT);
+    // 손절 체크
+    if (btcBalance > 0.0001 && pendingTrade) {
+      const stopLoss = pendingTrade.entryPrice * (1 - params.stopLossPct);
       if (currentPrice <= stopLoss) {
-        console.log(`[손절] 가격 $${currentPrice.toLocaleString()} <= 손절선 $${stopLoss.toLocaleString()}`);
-        await executeTrade(false, btcBalance, currentPrice, 'STOP_LOSS', votes);
+        console.log(`[손절] $${currentPrice.toLocaleString()} <= 손절선 $${stopLoss.toLocaleString()}`);
+        await executeTrade(false, btcBalance, currentPrice, 'STOP_LOSS', votes, qState);
         return;
       }
     }
 
     // 쿨다운 체크
-    if (Date.now() - lastTradeTime < TRADE_COOLDOWN_MS) {
-      console.log(`[쿨다운] 마지막 거래 후 ${Math.round((Date.now() - lastTradeTime) / 1000)}초`);
+    if (Date.now() - lastTradeTime < params.cooldownMs) {
+      console.log(`[쿨다운] ${Math.round((Date.now() - lastTradeTime) / 1000)}초 대기`);
       return;
     }
 
@@ -166,22 +214,27 @@ async function runCycle() {
     let isBuy = false;
     let volume = 0;
 
-    if (signal === 'BUY' && usdBalance > 1) {
-      volume = atrVolume;
-      isBuy = true;
-      shouldTrade = true;
-    } else if (signal === 'SELL' && btcBalance > 0.0001) {
-      volume = Math.min(btcBalance, atrVolume);
-      isBuy = false;
-      shouldTrade = true;
+    if (finalSignal === 'BUY' && usdBalance > 1) {
+      volume = atrVolume; isBuy = true; shouldTrade = true;
+    } else if (finalSignal === 'SELL' && btcBalance > 0.0001) {
+      volume = Math.min(btcBalance, atrVolume); isBuy = false; shouldTrade = true;
     }
 
     if (!shouldTrade) {
       console.log('[대기] 시그널 없음');
+      // 포지션 없고 HOLD → Q-Learning에 중립 보상
+      if (!pendingTrade && qAction === 'HOLD') {
+        qUpdate(qState, 'HOLD', 0.1, qState); // HOLD 유지 소폭 보상
+      }
       return;
     }
 
-    await executeTrade(isBuy, volume, currentPrice, signal, votes);
+    // 진입 시 지표 스냅샷 저장 (나중에 가중치 업데이트에 사용)
+    if (isBuy) {
+      pendingTrade = { state: qState, action: 'BUY', entryPrice: currentPrice, indicators: detail };
+    }
+
+    await executeTrade(isBuy, volume, currentPrice, finalSignal, votes, qState);
 
   } catch (err) {
     console.error('[에러]', err.message);
@@ -189,7 +242,7 @@ async function runCycle() {
   }
 }
 
-console.log(`AI 트레이딩 에이전트 v3 시작 [${PAPER_MODE ? '페이퍼' : '실거래'} | ERC-8004: ${ONCHAIN_ENABLED ? 'ON' : 'OFF'}]`);
-console.log('[전략] RSI + StochRSI + MACD + 볼린저 + EMA(9/21/50/200) + VWAP + Fear&Greed + 손절 + 쿨다운');
+console.log(`AI 트레이딩 에이전트 v4 시작 [${PAPER_MODE ? '페이퍼' : '실거래'} | ERC-8004: ${ONCHAIN_ENABLED ? 'ON' : 'OFF'}]`);
+console.log('[전략] 가중치 투표 + Q-Learning + 자동 파라미터 튜닝 + 200 EMA + 손절');
 runCycle();
 setInterval(runCycle, INTERVAL_MS);

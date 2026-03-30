@@ -1,44 +1,53 @@
 {
   "status": "running",
-  "lastUpdate": "2026-03-30T07:38:36.717Z",
+  "lastUpdate": "2026-03-30T07:49:04.220Z",
   "cycle": 1,
-  "price": 67285.6,
+  "price": 67343.6,
   "signal": "HOLD",
   "votes": {
     "buyCount": 1,
     "sellCount": 1,
-    "total": 7
+    "total": 7,
+    "buyScore": 1,
+    "sellScore": 1
   },
   "indicators": {
     "rsi": {
       "signal": "SELL",
-      "value": "75.26"
+      "value": "75.26",
+      "weight": "1.00"
     },
     "stochRSI": {
       "signal": "HOLD",
-      "value": "50.00"
+      "value": "50.00",
+      "weight": "1.00"
     },
     "macd": {
       "signal": "HOLD",
-      "histogram": "163.19"
+      "histogram": "167.30",
+      "weight": "1.00"
     },
     "bollinger": {
       "signal": "HOLD",
-      "lower": "65718",
-      "upper": "67601"
+      "lower": "65713",
+      "upper": "67612",
+      "weight": "1.00"
     },
     "ema": {
       "signal": "HOLD",
-      "ema9": "67048",
-      "ema21": "66803"
+      "ema9": "67059",
+      "ema21": "66809",
+      "weight": "1.00"
     },
     "vwap": {
-      "signal": "HOLD"
+      "signal": "HOLD",
+      "weight": "1.00"
     },
     "fearGreed": {
       "signal": "BUY",
       "value": 8,
-      "label": "Extreme Fear"
+      "label": "Extreme Fear",
+      "weight": "1.00"
     }
   },
   "balance": {
@@ -47,7 +56,7 @@
     "totalUsd": 10000
   },
   "regime": "bear",
-  "ema200": 68335,
+  "ema200": 68336,
   "atr": null,
   "stopLossPrice": null,
   "lastTrade": null,
@@ -60,5 +69,26 @@
   },
   "pnl": {
     "currentBalance": 10000
+  },
+  "rawSignal": "HOLD",
+  "learning": {
+    "weights": {
+      "rsi": 1,
+      "stochRSI": 1,
+      "macd": 1,
+      "bollinger": 1,
+      "ema": 1,
+      "vwap": 1,
+      "fearGreed": 1
+    },
+    "qState": "r2_m1_t0_f0",
+    "qAction": "HOLD",
+    "qEpsilon": 0.3,
+    "qUpdates": 0,
+    "qStates": 0,
+    "threshold": 3,
+    "stopLossPct": 0.03,
+    "positionRiskPct": 0.01,
+    "tuneHistory": []
   }
 }
