@@ -7,8 +7,8 @@ function calcRSI(closes, period = 14) {
   const changes = closes.slice(1).map((c, i) => c - closes[i]);
   const gains = changes.map(c => (c > 0 ? c : 0));
   const losses = changes.map(c => (c < 0 ? Math.abs(c) : 0));
-  const avgGain = gains.slice(0, period).reduce((a, b) => a + b) / period;
-  const avgLoss = losses.slice(0, period).reduce((a, b) => a + b) / period;
+  const avgGain = gains.slice(-period).reduce((a, b) => a + b) / period;
+  const avgLoss = losses.slice(-period).reduce((a, b) => a + b) / period;
   if (avgLoss === 0) return 100;
   return 100 - 100 / (1 + avgGain / avgLoss);
 }

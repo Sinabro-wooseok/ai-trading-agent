@@ -9,8 +9,9 @@ function calcRSI(closes, period = 14) {
   const gains = changes.map(c => (c > 0 ? c : 0));
   const losses = changes.map(c => (c < 0 ? Math.abs(c) : 0));
 
-  const avgGain = gains.slice(0, period).reduce((a, b) => a + b) / period;
-  const avgLoss = losses.slice(0, period).reduce((a, b) => a + b) / period;
+  // 최근 period개 변화량 사용 (앞 14개 버그 수정)
+  const avgGain = gains.slice(-period).reduce((a, b) => a + b) / period;
+  const avgLoss = losses.slice(-period).reduce((a, b) => a + b) / period;
 
   if (avgLoss === 0) return 100;
 
