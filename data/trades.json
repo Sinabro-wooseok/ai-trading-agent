@@ -1,0 +1,74 @@
+[
+  {
+    "side": "BUY",
+    "pair": "XBTUSD",
+    "volume": 0.02956262,
+    "price": 67653,
+    "usd": 2000,
+    "signal": "BUY",
+    "votes": {
+      "buyCount": 1,
+      "sellCount": 1,
+      "total": 7,
+      "buyScore": 30,
+      "sellScore": 25,
+      "weightedBuy": 30,
+      "weightedSell": 25
+    },
+    "timestamp": "2026-03-30T11:31:06.939Z"
+  },
+  {
+    "side": "BUY",
+    "pair": "XBTUSD",
+    "volume": 0.02960774,
+    "price": 67549.9,
+    "usd": 2000,
+    "signal": "BUY",
+    "votes": {
+      "buyCount": 1,
+      "sellCount": 1,
+      "total": 7,
+      "buyScore": 30,
+      "sellScore": 25,
+      "weightedBuy": 30,
+      "weightedSell": 25
+    },
+    "timestamp": "2026-03-30T11:26:06.507Z"
+  },
+  {
+    "side": "BUY",
+    "pair": "XBTUSD",
+    "volume": 0.0296277,
+    "price": 67504.4,
+    "usd": 2000,
+    "signal": "BUY",
+    "votes": {
+      "buyCount": 1,
+      "sellCount": 1,
+      "total": 7,
+      "buyScore": 30,
+      "sellScore": 25,
+      "weightedBuy": 30,
+      "weightedSell": 25
+    },
+    "timestamp": "2026-03-30T11:20:06.606Z"
+  },
+  {
+    "side": "BUY",
+    "pair": "XBTUSD",
+    "volume": 0.02962085,
+    "price": 67520,
+    "usd": 2000,
+    "signal": "BUY",
+    "votes": {
+      "buyCount": 1,
+      "sellCount": 1,
+      "total": 7,
+      "buyScore": 30,
+      "sellScore": 25,
+      "weightedBuy": 30,
+      "weightedSell": 25
+    },
+    "timestamp": "2026-03-30T11:15:06.081Z"
+  }
+]

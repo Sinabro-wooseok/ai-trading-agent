@@ -1,9 +1,9 @@
 {
   "status": "running",
-  "lastUpdate": "2026-03-30T10:45:29.029Z",
+  "lastUpdate": "2026-03-30T11:51:49.870Z",
   "cycle": 1,
-  "price": 67360.2,
-  "signal": "HOLD",
+  "price": 67665.6,
+  "signal": "BUY",
   "votes": {
     "buyCount": 1,
     "sellCount": 1,
@@ -16,34 +16,34 @@
   "indicators": {
     "rsi": {
       "signal": "HOLD",
-      "value": "61.06",
+      "value": "63.45",
       "weight": "1.00"
     },
     "stochRSI": {
       "signal": "SELL",
-      "value": "84.16",
+      "value": "91.06",
       "weight": "1.00"
     },
     "macd": {
       "signal": "HOLD",
-      "histogram": "101.72",
+      "histogram": "90.61",
       "weight": "1.00"
     },
     "bollinger": {
       "signal": "HOLD",
-      "lower": "65671",
-      "upper": "67932",
+      "lower": "65680",
+      "upper": "68049",
       "weight": "1.00"
     },
     "ema": {
       "signal": "HOLD",
-      "ema9": "67273",
-      "ema21": "66986",
+      "ema9": "67361",
+      "ema21": "67053",
       "weight": "1.00"
     },
     "vwap": {
       "signal": "HOLD",
-      "value": "69849",
+      "value": "69856",
       "weight": "1.00"
     },
     "fearGreed": {
@@ -56,17 +56,25 @@
     }
   },
   "balance": {
-    "usd": 10000,
-    "btc": 0,
-    "totalUsd": 10000
+    "usd": 1977.7820899553326,
+    "btc": 0.11841891000000002,
+    "totalUsd": 9990.668686451334,
+    "startingBalance": 10000,
+    "unrealizedPnl": -9.331313548666003,
+    "unrealizedPnlPct": -0.09331313548666004
   },
   "regime": "bear",
-  "ema200": 68313,
-  "atr": 552.21,
-  "stopLossPrice": null,
-  "lastTrade": null,
+  "ema200": 68307,
+  "atr": 571.64,
+  "stopLossPrice": 65623.41,
+  "lastTrade": {
+    "side": "BUY",
+    "price": 67653,
+    "volume": 0.029562621021979808,
+    "time": "2026-03-30T11:31:06.940Z"
+  },
   "stats": {
-    "totalTrades": 0,
+    "totalTrades": 4,
     "wins": 0,
     "losses": 0,
     "totalPnl": 0,
@@ -75,7 +83,7 @@
   "pnl": {
     "currentBalance": 10000
   },
-  "rawSignal": "HOLD",
+  "rawSignal": "BUY",
   "learning": {
     "weights": {
       "rsi": 1,
@@ -87,13 +95,20 @@
       "fearGreed": 1
     },
     "qState": "r1_m1_t0_f0",
-    "qAction": "HOLD",
-    "qEpsilon": 0.196,
-    "qUpdates": 85,
+    "qAction": "BUY",
+    "qEpsilon": 0.162,
+    "qUpdates": 123,
     "qStates": 2,
     "threshold": 3,
     "stopLossPct": 0.03,
     "positionRiskPct": 0.01,
     "tuneHistory": []
+  },
+  "openPosition": {
+    "avgPrice": 67556.77788285671,
+    "totalVolume": 0.11841891000000002,
+    "entryCount": 4,
+    "peakPrice": 67653,
+    "pnlPct": "0.16"
   }
 }

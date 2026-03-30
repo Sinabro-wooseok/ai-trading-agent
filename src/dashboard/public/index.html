@@ -188,6 +188,15 @@
         <div style="font-size:13px;font-weight:600" id="bal-btc">0</div>
       </div>
     </div>
+    <!-- 포지션 정보 (물타기/불타기) -->
+    <div id="position-info" style="display:none;margin-top:10px;background:#0d1526;border-radius:6px;padding:10px;font-size:12px">
+      <div style="color:#f6c90e;font-weight:700;margin-bottom:6px">포지션 오픈 중</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
+        <div><span style="color:#4a5568">평균진입</span><br><b id="pos-avg-price">--</b></div>
+        <div><span style="color:#4a5568">진입횟수</span><br><b id="pos-entry-count">--</b></div>
+        <div><span style="color:#4a5568">포지션 PnL</span><br><b id="pos-pnl">--</b></div>
+      </div>
+    </div>
   </div>
 
   <!-- 가격 차트 -->
@@ -451,6 +460,22 @@ function updateState(s) {
   document.getElementById('bal-usd').textContent = '$' + fmt(b.usd);
   document.getElementById('bal-btc').textContent = fmt(b.btc, 6) + ' BTC';
   updatePnL(b);
+
+  // 포지션 정보 (물타기/불타기)
+  const posInfo = document.getElementById('position-info');
+  if (s.openPosition) {
+    posInfo.style.display = 'block';
+    document.getElementById('pos-avg-price').textContent = '$' + fmt(s.openPosition.avgPrice, 0);
+    const ec = s.openPosition.entryCount;
+    const ecLabel = ec === 1 ? '1회 (기본)' : ec === 2 ? '2회 (물타기/불타기)' : `${ec}회 (풀 포지션)`;
+    document.getElementById('pos-entry-count').textContent = ecLabel;
+    const pnl = parseFloat(s.openPosition.pnlPct);
+    const pnlEl = document.getElementById('pos-pnl');
+    pnlEl.textContent = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+    pnlEl.style.color = pnl > 0 ? '#48bb78' : pnl < 0 ? '#fc8181' : '#e2e8f0';
+  } else {
+    posInfo.style.display = 'none';
+  }
 
   // 지표
   const d = s.indicators || {};

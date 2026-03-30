@@ -23,8 +23,32 @@ const TUNE_INTERVAL = 10; // 10사이클마다 파라미터 튜닝
 let cycleCount = 0;
 let lastTradeTime = 0;
 
-// 포지션 추적 (학습에 사용)
-let pendingTrade = null; // { state, action, entryPrice, indicators }
+// 포지션 추적 - 다중 진입 지원 (물타기/불타기)
+// {
+//   entries: [{price, volume, time}],  // 각 진입 기록
+//   avgPrice: number,                   // 평균 진입가
+//   totalVolume: number,                // 총 보유량
+//   peakPrice: number,                  // 최고가 (불타기 트레일링 스탑용)
+//   state: qState,                      // 최초 진입 Q 상태
+//   indicators: {},                     // 최초 진입 지표 스냅샷
+// }
+let pendingTrade = null;
+
+// ─── 물타기 / 불타기 설정 (3Commas + LuxAlgo 연구 기반) ───
+const PYRAMID = {
+  // 물타기 (DCA): 하락 시 추가 매수
+  DCA_STEP_1: -0.02,   // -2% 에서 1차 추가 (기본량의 x1.5)
+  DCA_STEP_2: -0.05,   // -5% 에서 2차 추가 (기본량의 x2.0)
+  DCA_MULTIPLIER: [0, 1.5, 2.0], // 진입 순서별 사이즈 배율
+
+  // 불타기 (Pyramid scale-in): 상승 시 추가 매수
+  PYR_STEP_1: +0.02,   // +2% 에서 추가 (기본량의 x0.6)
+  PYR_STEP_2: +0.05,   // +5% 에서 추가 (기본량의 x0.4)
+  PYR_MULTIPLIER: [0, 0.6, 0.4], // 50-30-20 비율 변형
+
+  MAX_ENTRIES: 3,       // 최대 진입 횟수 (1 기본 + 2 추가)
+  MAX_POSITION_PCT: 0.5, // 총 자본 50% 상한
+};
 
 // ERC-8004 온체인 설정
 const ONCHAIN_ENABLED = !!(process.env.AGENT_PRIVATE_KEY && process.env.TRADE_VALIDATOR_ADDRESS);
@@ -47,6 +71,96 @@ function loadTrades() {
   const f = path.join(__dirname, '../../data/trades.json');
   if (!fs.existsSync(f)) return [];
   try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return []; }
+}
+
+// ─── 물타기 / 불타기 진입 판단 ───
+function checkPyramidEntry(currentPrice) {
+  if (!pendingTrade || pendingTrade.entries.length >= PYRAMID.MAX_ENTRIES) return null;
+
+  const entryCount = pendingTrade.entries.length; // 현재 진입 횟수 (1~2)
+  const pricePct = (currentPrice - pendingTrade.avgPrice) / pendingTrade.avgPrice;
+  const baseVolume = pendingTrade.entries[0].volume;
+
+  // 물타기: 하락 중 추가 매수
+  if (entryCount === 1 && pricePct <= PYRAMID.DCA_STEP_1) {
+    const addVolume = baseVolume * PYRAMID.DCA_MULTIPLIER[1];
+    console.log(`[물타기] ${(pricePct*100).toFixed(2)}% 하락 → ${addVolume.toFixed(8)} BTC 추가 매수 (평균단가 낮추기)`);
+    return { type: 'DCA', volume: addVolume };
+  }
+  if (entryCount === 2 && pricePct <= PYRAMID.DCA_STEP_2) {
+    const addVolume = baseVolume * PYRAMID.DCA_MULTIPLIER[2];
+    console.log(`[물타기2] ${(pricePct*100).toFixed(2)}% 하락 → ${addVolume.toFixed(8)} BTC 추가 매수`);
+    return { type: 'DCA', volume: addVolume };
+  }
+
+  // 불타기: 상승 중 추가 매수 (추세 올라타기)
+  if (entryCount === 1 && pricePct >= PYRAMID.PYR_STEP_1) {
+    const addVolume = baseVolume * PYRAMID.PYR_MULTIPLIER[1];
+    console.log(`[불타기] +${(pricePct*100).toFixed(2)}% 상승 → ${addVolume.toFixed(8)} BTC 추가 (추세 올라타기)`);
+    return { type: 'PYRAMID', volume: addVolume };
+  }
+  if (entryCount === 2 && pricePct >= PYRAMID.PYR_STEP_2) {
+    const addVolume = baseVolume * PYRAMID.PYR_MULTIPLIER[2];
+    console.log(`[불타기2] +${(pricePct*100).toFixed(2)}% 상승 → ${addVolume.toFixed(8)} BTC 추가`);
+    return { type: 'PYRAMID', volume: addVolume };
+  }
+
+  return null;
+}
+
+// 포지션 평균가 & 총 보유량 재계산
+function recalcPosition(entries) {
+  const totalCost = entries.reduce((s, e) => s + e.price * e.volume, 0);
+  const totalVol = entries.reduce((s, e) => s + e.volume, 0);
+  return { avgPrice: totalCost / totalVol, totalVolume: totalVol };
+}
+
+// 포지션 파일 경로
+const POSITION_FILE = require('path').join(__dirname, '../../data/position.json');
+
+// 포지션 저장
+function savePosition(pos) {
+  require('fs').writeFileSync(POSITION_FILE, JSON.stringify(pos, null, 2));
+}
+
+// 포지션 복원 (재시작 시 호출)
+function loadPosition() {
+  if (!require('fs').existsSync(POSITION_FILE)) return null;
+  try { return JSON.parse(require('fs').readFileSync(POSITION_FILE, 'utf8')); } catch { return null; }
+}
+
+// 시작 시 미청산 포지션 복원
+pendingTrade = loadPosition();
+if (pendingTrade) {
+  // 구버전 포지션 형식 호환
+  if (!pendingTrade.entries) {
+    pendingTrade.entries = [{ price: pendingTrade.entryPrice || pendingTrade.avgPrice, volume: pendingTrade.volume || 0, time: new Date().toISOString() }];
+    pendingTrade.avgPrice = pendingTrade.avgPrice || pendingTrade.entryPrice;
+    pendingTrade.totalVolume = pendingTrade.volume || 0;
+    pendingTrade.peakPrice = pendingTrade.entryPrice;
+  }
+  console.log(`[포지션 복원] 평균진입 $${pendingTrade.avgPrice?.toLocaleString()} | ${pendingTrade.entries.length}회 진입 | 총 ${pendingTrade.totalVolume?.toFixed(6)} BTC`);
+} else {
+  // position.json 없으면 trades.json에서 순 BTC 잔고 계산해 포지션 재구성
+  const allTrades = loadTrades();
+  const netBtc = allTrades.reduce((s, t) => t.side === 'BUY' ? s + t.volume : s - t.volume, 0);
+  if (netBtc > 0.0001) {
+    const buys = allTrades.filter(t => t.side === 'BUY');
+    const totalCost = buys.reduce((s, t) => s + t.usd, 0);
+    const totalVol = buys.reduce((s, t) => s + t.volume, 0);
+    const avgP = totalCost / totalVol;
+    pendingTrade = {
+      entries: buys.map(t => ({ price: t.price, volume: t.volume, time: t.time })),
+      avgPrice: avgP,
+      totalVolume: netBtc,
+      peakPrice: Math.max(...buys.map(t => t.price)),
+      state: null,
+      action: 'BUY',
+      indicators: null,
+    };
+    savePosition(pendingTrade);
+    console.log(`[포지션 재구성] trades.json 기반 | 평균진입 $${avgP.toFixed(0)} | 총 ${netBtc.toFixed(6)} BTC`);
+  }
 }
 
 async function executeTrade(isBuy, volume, currentPrice, signal, votes, currentState) {
@@ -75,26 +189,45 @@ async function executeTrade(isBuy, volume, currentPrice, signal, votes, currentS
   lastTradeTime = Date.now();
 
   if (isBuy) {
-    pendingTrade = { state: currentState, action: 'BUY', entryPrice: currentPrice };
+    if (!pendingTrade) {
+      // 신규 포지션
+      pendingTrade = {
+        entries: [{ price: currentPrice, volume, time: new Date().toISOString() }],
+        avgPrice: currentPrice,
+        totalVolume: volume,
+        peakPrice: currentPrice,
+        state: currentState,
+        action: 'BUY',
+        indicators: detail,
+      };
+    } else {
+      // 물타기 / 불타기 추가 진입
+      pendingTrade.entries.push({ price: currentPrice, volume, time: new Date().toISOString() });
+      const { avgPrice, totalVolume } = recalcPosition(pendingTrade.entries);
+      pendingTrade.avgPrice = avgPrice;
+      pendingTrade.totalVolume = totalVolume;
+      console.log(`[평균단가] $${avgPrice.toFixed(0)} | 총 보유 ${totalVolume.toFixed(8)} BTC (${pendingTrade.entries.length}회 진입)`);
+    }
+    savePosition(pendingTrade);
     const params2 = getParams();
-    saveState({ stopLossPrice: currentPrice * (1 - params2.stopLossPct) });
+    // 손절선: 평균 진입가 기준
+    saveState({ stopLossPrice: pendingTrade.avgPrice * (1 - params2.stopLossPct) });
   } else {
-    // SELL: 학습 업데이트
+    // SELL: 학습 업데이트 (평균 진입가 기준 PnL)
     if (pendingTrade) {
-      const pnlPct = (currentPrice - pendingTrade.entryPrice) / pendingTrade.entryPrice * 100;
+      const pnlPct = (currentPrice - pendingTrade.avgPrice) / pendingTrade.avgPrice * 100;
       const outcome = pnlPct > 0 ? 'win' : 'loss';
-      console.log(`[결과] 진입 $${pendingTrade.entryPrice.toLocaleString()} → 청산 $${currentPrice.toLocaleString()} | PnL: ${pnlPct.toFixed(2)}% (${outcome})`);
+      const entryCount = pendingTrade.entries.length;
+      console.log(`[결과] 평균진입 $${pendingTrade.avgPrice.toFixed(0)} → 청산 $${currentPrice.toLocaleString()} | PnL: ${pnlPct.toFixed(2)}% | ${entryCount}회 진입 (${outcome})`);
 
-      // 레벨 1: 가중치 업데이트 (마지막 BUY 시점의 지표 필요 → 상태에서 복원)
-      // pendingTrade에 지표 저장되어 있으면 업데이트
-      if (pendingTrade.indicators) {
-        updateWeights(pendingTrade.indicators, 'BUY', outcome);
-      }
+      if (pendingTrade.indicators) updateWeights(pendingTrade.indicators, 'BUY', outcome);
 
-      // 레벨 2: Q-Table 업데이트
-      qUpdate(pendingTrade.state, pendingTrade.action, pnlPct, currentState);
+      // Q-Learning 리워드: PnL에 진입 횟수 패널티 포함 (3Commas/arXiv 기반)
+      const entryPenalty = Math.max(0, entryCount - 2) * -1.0; // 3회 초과 시 패널티
+      qUpdate(pendingTrade.state, pendingTrade.action, pnlPct + entryPenalty, currentState);
     }
     pendingTrade = null;
+    if (require('fs').existsSync(POSITION_FILE)) require('fs').unlinkSync(POSITION_FILE);
     saveState({ stopLossPrice: null });
   }
 
@@ -107,21 +240,24 @@ async function runCycle() {
 
   try {
     const balance = getBalance();
-    // 페이퍼 모드: current_value = 현재 총자산(USD+BTC 환산), startingBalance = 시작잔고
-    const usdBalance = parseFloat(balance?.ZUSD || balance?.USD || 0);
-    const btcBalance = parseFloat(balance?.XXBT || balance?.XBT || 0);
+    const totalPortfolio = parseFloat(balance?.ZUSD || balance?.USD || 0); // 총자산 (USD+BTC)
     const startingBalance = balance?.startingBalance ?? 10000;
     const unrealizedPnl = balance?.unrealizedPnl ?? 0;
     const unrealizedPnlPct = balance?.unrealizedPnlPct ?? 0;
-    console.log(`[잔고] 총자산: $${usdBalance.toFixed(2)} | PnL: ${unrealizedPnl >= 0 ? '+' : ''}$${unrealizedPnl.toFixed(2)} (${(unrealizedPnlPct * 100).toFixed(2)}%)`);
 
-    if (usdBalance < 1 && btcBalance < 0.0001) {
-      saveState({ status: 'warning', balance: { usd: usdBalance, btc: btcBalance, totalUsd: 0 } });
+    const currentPrice = getTicker(PAIR);
+    // 가용 USD = 총자산 - BTC 보유액 (페이퍼 모드에서 BTC 직접 조회 불가)
+    const btcBalance = pendingTrade ? pendingTrade.totalVolume : 0;
+    const btcHeldValue = btcBalance * currentPrice;
+    const usdBalance = Math.max(0, totalPortfolio - btcHeldValue);
+    console.log(`[잔고] 가용USD: $${usdBalance.toFixed(2)} | BTC: ${btcBalance.toFixed(6)} ($${btcHeldValue.toFixed(0)}) | 총: $${totalPortfolio.toFixed(2)} | PnL: ${unrealizedPnl >= 0 ? '+' : ''}$${unrealizedPnl.toFixed(2)}`);
+
+    if (totalPortfolio < 1) {
+      saveState({ status: 'warning', balance: { usd: usdBalance, btc: btcBalance, totalUsd: totalPortfolio } });
       return;
     }
 
-    const currentPrice = getTicker(PAIR);
-    const totalUSD = usdBalance + btcBalance * currentPrice;
+    const totalUSD = totalPortfolio;
     setDailyBaseline(totalUSD);
 
     if (!canTrade(totalUSD)) {
@@ -215,6 +351,13 @@ async function runCycle() {
         unrealizedPnl,
         unrealizedPnlPct,
       },
+      openPosition: pendingTrade ? {
+        avgPrice: pendingTrade.avgPrice,
+        totalVolume: pendingTrade.totalVolume,
+        entryCount: pendingTrade.entries.length,
+        peakPrice: pendingTrade.peakPrice,
+        pnlPct: ((currentPrice - pendingTrade.avgPrice) / pendingTrade.avgPrice * 100).toFixed(2),
+      } : null,
       regime,
       ema200: ema200 ? parseFloat(ema200.toFixed(0)) : null,
       atr: atr ? parseFloat(atr.toFixed(2)) : null,
@@ -233,12 +376,12 @@ async function runCycle() {
     });
     savePricePoint(currentPrice, finalSignal, totalUSD);
 
-    // 손절 체크
-    if (btcBalance > 0.0001 && pendingTrade) {
-      const stopLoss = pendingTrade.entryPrice * (1 - params.stopLossPct);
+    // 손절 체크 (평균 진입가 기준)
+    if (pendingTrade) {
+      const stopLoss = pendingTrade.avgPrice * (1 - params.stopLossPct);
       if (currentPrice <= stopLoss) {
-        console.log(`[손절] $${currentPrice.toLocaleString()} <= 손절선 $${stopLoss.toLocaleString()}`);
-        await executeTrade(false, btcBalance, currentPrice, 'STOP_LOSS', votes, qState);
+        console.log(`[손절] $${currentPrice.toLocaleString()} <= 손절선 $${stopLoss.toLocaleString()} (평균진입 $${pendingTrade.avgPrice.toFixed(0)})`);
+        await executeTrade(false, pendingTrade.totalVolume, currentPrice, 'STOP_LOSS', votes, qState);
         return;
       }
     }
@@ -253,10 +396,34 @@ async function runCycle() {
     let isBuy = false;
     let volume = 0;
 
-    if (finalSignal === 'BUY' && usdBalance > 1) {
+    // 최고가 업데이트 (불타기 트레일링 스탑용)
+    if (pendingTrade && currentPrice > (pendingTrade.peakPrice || 0)) {
+      pendingTrade.peakPrice = currentPrice;
+    }
+
+    if (!pendingTrade && finalSignal === 'BUY' && usdBalance > 100) {
+      // ① 신규 진입
       volume = atrVolume; isBuy = true; shouldTrade = true;
-    } else if (finalSignal === 'SELL' && btcBalance > 0.0001) {
-      volume = Math.min(btcBalance, atrVolume); isBuy = false; shouldTrade = true;
+
+    } else if (pendingTrade && finalSignal === 'BUY') {
+      // ② 물타기 / 불타기 체크
+      const pyramidEntry = checkPyramidEntry(currentPrice);
+      if (pyramidEntry && usdBalance > 100) {
+        // 최대 포지션 50% 제한 확인
+        const newTotalUsd = (pendingTrade.totalVolume + pyramidEntry.volume) * currentPrice;
+        if (newTotalUsd / startingBalance <= PYRAMID.MAX_POSITION_PCT) {
+          volume = pyramidEntry.volume; isBuy = true; shouldTrade = true;
+        } else {
+          console.log(`[포지션 한도] 총 ${(newTotalUsd/startingBalance*100).toFixed(0)}% > 50% 제한 → 추가 매수 차단`);
+        }
+      } else if (!pyramidEntry) {
+        console.log(`[포지션 유지] 평균진입 $${pendingTrade.avgPrice?.toFixed(0)} | ${pendingTrade.entries.length}회 진입 | 변동없음`);
+      }
+
+    } else if (pendingTrade && finalSignal === 'SELL') {
+      // ③ 전량 청산
+      volume = pendingTrade.totalVolume || atrVolume;
+      isBuy = false; shouldTrade = true;
     }
 
     if (!shouldTrade) {

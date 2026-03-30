@@ -1,0 +1,26 @@
+{
+  "entries": [
+    {
+      "price": 67653,
+      "volume": 0.02956262
+    },
+    {
+      "price": 67549.9,
+      "volume": 0.02960774
+    },
+    {
+      "price": 67504.4,
+      "volume": 0.0296277
+    },
+    {
+      "price": 67520,
+      "volume": 0.02962085
+    }
+  ],
+  "avgPrice": 67556.77788285671,
+  "totalVolume": 0.11841891000000002,
+  "peakPrice": 67653,
+  "state": null,
+  "action": "BUY",
+  "indicators": null
+}
