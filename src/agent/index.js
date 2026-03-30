@@ -8,8 +8,8 @@ const { canTrade, setDailyBaseline } = require('../risk/manager');
 const { signTradeIntent } = require('../signing/eip712');
 const { getMarketRegime, applyTrendFilter } = require('../strategies/trend');
 
-const BUY_THRESHOLD = 45;   // combined.js와 동기화 (60→45)
-const SELL_THRESHOLD = 30;  // 40→30
+const BUY_THRESHOLD = 28;   // 해커톤: F&G 극단공포 기준 조정
+const SELL_THRESHOLD = 20;  // 30→20
 const { saveState, saveTrade, savePricePoint } = require('./state');
 
 // 학습 모듈
@@ -153,9 +153,11 @@ async function runCycle() {
     }
     console.log(`[15분봉] ${result15m.signal} | 매수점:${result15m.votes?.weightedBuy ?? 0} 매도점:${result15m.votes?.weightedSell ?? 0}`);
 
-    // 추세 필터 적용 (60분봉 기준)
-    const filteredSignal = applyTrendFilter(rawSignal, regime);
+    // 추세 필터 적용 (60분봉 기준, F&G 극단 공포 예외 포함)
+    const fgValue = result.detail?.fearGreed?.value || 50;
+    const filteredSignal = applyTrendFilter(rawSignal, regime, fgValue);
     if (filteredSignal !== rawSignal) console.log(`[추세 필터] ${rawSignal} → HOLD`);
+    if (rawSignal === 'BUY' && regime === 'bear' && filteredSignal === 'BUY') console.log(`[F&G 예외] BEAR이지만 극단공포(${fgValue}) → BUY 허용`);
 
     console.log(`[시그널] ${filteredSignal} | 매수점:${votes.weightedBuy}(임계:${BUY_THRESHOLD}) 매도점:${votes.weightedSell}(임계:${SELL_THRESHOLD})`);
     console.log(`  RSI:${detail.rsi.value} StochRSI:${detail.stochRSI.value} MACD:${detail.macd.histogram} F&G:${detail.fearGreed.value}(x${fgMultiplier_})`);
@@ -175,20 +177,20 @@ async function runCycle() {
     const qAction = getAction(qState, allowedActions);
     const qInfo = qStats();
 
-    // 15분봉 방향 일치 확인 (필터링 강화)
-    // 60분봉이 BUY인데 15분봉이 SELL이면 진입 보류
+    // 15분봉 방향 확인 (완화: 반대 방향일 때만 차단)
+    // 60분봉 BUY + 15분봉 SELL → 보류 / 60분봉 BUY + 15분봉 HOLD → 허용
     const mtfSignal = (() => {
       if (filteredSignal === 'HOLD') return 'HOLD';
-      if (result15m.signal === 'HOLD') return filteredSignal; // 15분봉 HOLD → 60분봉 따름
-      if (result15m.signal !== filteredSignal) {
-        console.log(`[MTF 필터] 60분:${filteredSignal} vs 15분:${result15m.signal} → HOLD`);
-        return 'HOLD';
-      }
-      return filteredSignal; // 방향 일치 → 진입 확정
+      if (result15m.signal === 'HOLD') return filteredSignal; // 15분봉 중립 → 60분봉 따름
+      if (result15m.signal === filteredSignal) return filteredSignal; // 방향 일치 → 강한 진입
+      // 15분봉이 반대 방향 → 차단
+      console.log(`[MTF 필터] 60분:${filteredSignal} vs 15분:${result15m.signal} → HOLD`);
+      return 'HOLD';
     })();
 
     // 최종 시그널: 추세필터 → MTF 확인 → Q-Learning 검증
-    const finalSignal = qAction !== 'HOLD' ? qAction : mtfSignal === qAction ? mtfSignal : 'HOLD';
+    // ε-탐험 중(random)이면 MTF 시그널 우선, 아니면 Q 행동 우선
+    const finalSignal = mtfSignal !== 'HOLD' && qAction !== 'HOLD' ? qAction : mtfSignal;
 
     console.log(`  Q-Learning → ${qAction} (ε:${qInfo.epsilon} 학습:${qInfo.totalUpdates}회 상태:${qInfo.stateCount}개)`);
 

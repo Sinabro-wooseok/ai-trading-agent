@@ -51,13 +51,13 @@ function getOHLC(pair = 'XBTUSD', interval = 60) {
 
 // 시장가 매수
 function buyMarket(pair, volume) {
-  if (PAPER_MODE) return kraken(`paper buy --pair ${pair} --volume ${volume}`);
+  if (PAPER_MODE) return kraken(`paper buy ${pair} ${volume}`);
   return kraken(`order add --pair ${pair} --type buy --ordertype market --volume ${volume} --yes`);
 }
 
 // 시장가 매도
 function sellMarket(pair, volume) {
-  if (PAPER_MODE) return kraken(`paper sell --pair ${pair} --volume ${volume}`);
+  if (PAPER_MODE) return kraken(`paper sell ${pair} ${volume}`);
   return kraken(`order add --pair ${pair} --type sell --ordertype market --volume ${volume} --yes`);
 }
 

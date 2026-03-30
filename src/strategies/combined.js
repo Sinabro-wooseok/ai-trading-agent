@@ -12,8 +12,8 @@ const { getVWAPSignal } = require('./vwap');
 const { getFearGreedSignal } = require('./feargreed');
 const { getWeights } = require('../learning/weights');
 
-const BUY_THRESHOLD = 45;   // 연구 기반: 60→45 (횡보장 기회 포착)
-const SELL_THRESHOLD = 30;  // 40→30
+const BUY_THRESHOLD = 28;   // 해커톤: F&G 극단공포(8) 기준 현재 점수(30) 커버
+const SELL_THRESHOLD = 20;  // 22→20
 
 // 각 지표별 점수 계산 (연구 기반 가중치)
 function calcIndicatorScore(rsi, stochRSI, macd, bb, ema, vwap, fg, closes, currentPrice) {

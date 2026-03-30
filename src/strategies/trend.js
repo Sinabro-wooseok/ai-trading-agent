@@ -15,9 +15,17 @@ function getMarketRegime(closes, currentPrice) {
 }
 
 // 추세 필터: 시그널이 시장 방향과 맞는지 확인
-function applyTrendFilter(signal, regime) {
+// fearGreedValue: F&G 지수 (극단 공포 시 BEAR에서도 BUY 허용)
+function applyTrendFilter(signal, regime, fearGreedValue = 50) {
   if (regime === 'neutral') return signal;
-  if (signal === 'BUY' && regime === 'bear') return 'HOLD';
+
+  // 극단 공포(F&G<=20) → 역발상 BUY 허용 (BEAR 예외)
+  // 연구: F&G 극단 공포는 역사적으로 멀티월 랠리 선행 (2018년 이후 예외 없음)
+  if (signal === 'BUY' && regime === 'bear') {
+    if (fearGreedValue <= 20) return signal;
+    return 'HOLD';
+  }
+
   if (signal === 'SELL' && regime === 'bull') return 'HOLD';
   return signal;
 }
