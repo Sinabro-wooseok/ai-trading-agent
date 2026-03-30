@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sinabro AI Trading Agent</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0e1a;
+      color: #e2e8f0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1a1f35 0%, #0d1526 100%);
+      border-bottom: 1px solid #2d3748;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header .logo { font-size: 20px; font-weight: 700; color: #63b3ed; letter-spacing: 1px; }
+    header .logo span { color: #48bb78; }
+    .status-dot {
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 50%; background: #48bb78;
+      box-shadow: 0 0 8px #48bb78; animation: pulse 2s infinite;
+      margin-right: 8px;
+    }
+    .status-dot.halted { background: #f56565; box-shadow: 0 0 8px #f56565; }
+    .status-dot.warning { background: #ed8936; box-shadow: 0 0 8px #ed8936; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #131929;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #718096;
+      margin-bottom: 12px;
+    }
+
+    .big-price {
+      font-size: 36px; font-weight: 700; color: #63b3ed;
+      letter-spacing: -1px;
+    }
+    .sub { font-size: 12px; color: #718096; margin-top: 4px; }
+
+    .signal-badge {
+      display: inline-block;
+      padding: 6px 20px; border-radius: 6px;
+      font-size: 22px; font-weight: 800;
+      letter-spacing: 2px;
+    }
+    .signal-badge.BUY { background: #1a3a2a; color: #48bb78; border: 1px solid #48bb78; }
+    .signal-badge.SELL { background: #3a1a1a; color: #f56565; border: 1px solid #f56565; }
+    .signal-badge.HOLD { background: #1a2a3a; color: #63b3ed; border: 1px solid #63b3ed; }
+
+    .vote-bar {
+      display: flex; height: 8px; border-radius: 4px;
+      overflow: hidden; margin: 12px 0;
+    }
+    .vote-buy { background: #48bb78; transition: width 0.5s; }
+    .vote-sell { background: #f56565; transition: width 0.5s; }
+    .vote-hold { background: #2d3748; flex: 1; }
+
+    .indicator-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .indicator {
+      background: #0d1526; border-radius: 8px; padding: 12px;
+    }
+    .indicator .name { font-size: 10px; color: #718096; margin-bottom: 4px; text-transform: uppercase; }
+    .indicator .val { font-size: 18px; font-weight: 600; }
+    .indicator .sig {
+      font-size: 10px; padding: 2px 6px; border-radius: 3px;
+      display: inline-block; margin-top: 4px;
+    }
+    .sig.BUY { background: #1a3a2a; color: #48bb78; }
+    .sig.SELL { background: #3a1a1a; color: #f56565; }
+    .sig.HOLD { background: #1a2536; color: #63b3ed; }
+
+    .balance-row {
+      display: flex; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid #1e2942;
+      font-size: 14px;
+    }
+    .balance-row:last-child { border-bottom: none; }
+    .balance-row .label { color: #718096; }
+    .balance-row .amount { font-weight: 600; color: #e2e8f0; }
+
+    .pnl-positive { color: #48bb78; }
+    .pnl-negative { color: #f56565; }
+
+    .trades-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .trades-table th {
+      text-align: left; color: #718096; font-weight: 400;
+      padding: 6px 8px; border-bottom: 1px solid #2d3748;
+      font-size: 10px; text-transform: uppercase;
+    }
+    .trades-table td { padding: 8px; border-bottom: 1px solid #1a2030; }
+    .trades-table tr:last-child td { border-bottom: none; }
+    .badge-buy { color: #48bb78; font-weight: 700; }
+    .badge-sell { color: #f56565; font-weight: 700; }
+
+    .last-update { font-size: 11px; color: #4a5568; }
+
+    .card.wide { grid-column: 1 / -1; }
+    .card.span2 { grid-column: span 2; }
+
+    .fg-meter {
+      width: 100%; height: 20px; border-radius: 10px;
+      background: linear-gradient(to right, #48bb78, #ed8936, #f56565);
+      position: relative; margin: 12px 0;
+    }
+    .fg-needle {
+      position: absolute; top: -4px;
+      width: 4px; height: 28px;
+      background: white; border-radius: 2px;
+      transform: translateX(-50%);
+      transition: left 0.5s;
+      box-shadow: 0 0 6px rgba(255,255,255,0.8);
+    }
+    .onchain-badge {
+      display: inline-block; padding: 2px 8px;
+      border-radius: 4px; font-size: 10px;
+      background: #1a2a3a; color: #63b3ed;
+      border: 1px solid #2d5a8e;
+    }
+    .onchain-badge.active { background: #1a3a2a; color: #48bb78; border-color: #2d6a4a; }
+
+    .cycle-count { font-size: 48px; font-weight: 700; color: #4a5568; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Sinabro<span> AI</span> Trading Agent</div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <span id="onchain-badge" class="onchain-badge">ERC-8004: OFF</span>
+      <span class="last-update"><span class="status-dot" id="status-dot"></span><span id="last-update">연결 중...</span></span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- BTC 가격 -->
+    <div class="card">
+      <h3>BTC / USD</h3>
+      <div class="big-price" id="btc-price">$--,---</div>
+      <div class="sub" id="price-update">--</div>
+    </div>
+
+    <!-- 시그널 -->
+    <div class="card">
+      <h3>현재 시그널</h3>
+      <div style="margin-bottom:8px"><span class="signal-badge HOLD" id="signal-badge">HOLD</span></div>
+      <div class="vote-bar">
+        <div class="vote-buy" id="vote-buy" style="width:0%"></div>
+        <div class="vote-sell" id="vote-sell" style="width:0%"></div>
+        <div class="vote-hold"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#718096">
+        <span>매수 <b id="vote-buy-n" style="color:#48bb78">0</b>/7</span>
+        <span>매도 <b id="vote-sell-n" style="color:#f56565">0</b>/7</span>
+      </div>
+    </div>
+
+    <!-- 사이클 -->
+    <div class="card">
+      <h3>실행 사이클</h3>
+      <div class="cycle-count" id="cycle-count">0</div>
+      <div class="sub">총 실행 횟수</div>
+    </div>
+
+    <!-- 잔고 -->
+    <div class="card">
+      <h3>포트폴리오</h3>
+      <div class="balance-row">
+        <span class="label">USD 잔고</span>
+        <span class="amount" id="bal-usd">$0.00</span>
+      </div>
+      <div class="balance-row">
+        <span class="label">BTC 잔고</span>
+        <span class="amount" id="bal-btc">0.000000</span>
+      </div>
+      <div class="balance-row">
+        <span class="label">총 평가액</span>
+        <span class="amount" id="bal-total" style="color:#63b3ed;font-size:16px">$0.00</span>
+      </div>
+      <div class="balance-row">
+        <span class="label">PnL</span>
+        <span class="amount pnl-positive" id="pnl">--</span>
+      </div>
+    </div>
+
+    <!-- 7개 지표 -->
+    <div class="card span2">
+      <h3>7개 지표 상세</h3>
+      <div class="indicator-grid" id="indicators">
+        <div class="indicator"><div class="name">RSI</div><div class="val" id="rsi-val">--</div><span class="sig HOLD" id="rsi-sig">HOLD</span></div>
+        <div class="indicator"><div class="name">StochRSI</div><div class="val" id="stoch-val">--</div><span class="sig HOLD" id="stoch-sig">HOLD</span></div>
+        <div class="indicator"><div class="name">MACD Histogram</div><div class="val" id="macd-val">--</div><span class="sig HOLD" id="macd-sig">HOLD</span></div>
+        <div class="indicator"><div class="name">Bollinger Bands</div><div class="val" id="bb-val">--</div><span class="sig HOLD" id="bb-sig">HOLD</span></div>
+        <div class="indicator"><div class="name">EMA 9/21</div><div class="val" id="ema-val">--</div><span class="sig HOLD" id="ema-sig">HOLD</span></div>
+        <div class="indicator"><div class="name">VWAP</div><div class="val" id="vwap-val">--</div><span class="sig HOLD" id="vwap-sig">HOLD</span></div>
+      </div>
+    </div>
+
+    <!-- Fear & Greed -->
+    <div class="card">
+      <h3>Fear & Greed Index</h3>
+      <div style="font-size:42px;font-weight:700;text-align:center;margin:8px 0" id="fg-value">--</div>
+      <div class="fg-meter"><div class="fg-needle" id="fg-needle" style="left:50%"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:#718096;margin-top:4px">
+        <span>Extreme Fear</span><span>Neutral</span><span>Extreme Greed</span>
+      </div>
+      <div style="text-align:center;margin-top:8px;font-size:12px;color:#a0aec0" id="fg-label">--</div>
+    </div>
+
+    <!-- 최근 거래 -->
+    <div class="card wide">
+      <h3>최근 거래 내역</h3>
+      <table class="trades-table">
+        <thead>
+          <tr>
+            <th>시간</th>
+            <th>종류</th>
+            <th>가격</th>
+            <th>수량 (BTC)</th>
+            <th>금액 (USD)</th>
+            <th>시그널</th>
+          </tr>
+        </thead>
+        <tbody id="trades-body">
+          <tr><td colspan="6" style="text-align:center;color:#4a5568;padding:20px">거래 기록 없음</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let startBalance = null;
+
+    function fmt(n, d = 2) {
+      if (n == null || isNaN(n)) return '--';
+      return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+    }
+
+    function sigClass(s) {
+      if (s === 'BUY') return 'BUY';
+      if (s === 'SELL') return 'SELL';
+      return 'HOLD';
+    }
+
+    function updateState(state) {
+      // 가격
+      document.getElementById('btc-price').textContent = '$' + fmt(state.price);
+      document.getElementById('price-update').textContent = state.lastUpdate
+        ? new Date(state.lastUpdate).toLocaleTimeString('ko-KR') : '--';
+      document.getElementById('last-update').textContent =
+        state.lastUpdate ? new Date(state.lastUpdate).toLocaleTimeString('ko-KR') : '--';
+
+      // 사이클
+      document.getElementById('cycle-count').textContent = state.cycle || 0;
+
+      // 상태 도트
+      const dot = document.getElementById('status-dot');
+      dot.className = 'status-dot ' + (state.status === 'running' ? '' : state.status);
+
+      // 온체인
+      const ob = document.getElementById('onchain-badge');
+      ob.textContent = state.onchain ? 'ERC-8004: ON' : 'ERC-8004: OFF';
+      ob.className = 'onchain-badge' + (state.onchain ? ' active' : '');
+
+      // 시그널
+      const sb = document.getElementById('signal-badge');
+      sb.textContent = state.signal || 'HOLD';
+      sb.className = 'signal-badge ' + sigClass(state.signal);
+
+      // 투표
+      const total = state.votes?.total || 7;
+      const buyPct = ((state.votes?.buyCount || 0) / total * 100).toFixed(0);
+      const sellPct = ((state.votes?.sellCount || 0) / total * 100).toFixed(0);
+      document.getElementById('vote-buy').style.width = buyPct + '%';
+      document.getElementById('vote-sell').style.width = sellPct + '%';
+      document.getElementById('vote-buy-n').textContent = state.votes?.buyCount || 0;
+      document.getElementById('vote-sell-n').textContent = state.votes?.sellCount || 0;
+
+      // 잔고
+      const b = state.balance || {};
+      document.getElementById('bal-usd').textContent = '$' + fmt(b.usd);
+      document.getElementById('bal-btc').textContent = fmt(b.btc, 6) + ' BTC';
+      document.getElementById('bal-total').textContent = '$' + fmt(b.totalUsd);
+
+      // PnL
+      if (!startBalance && b.totalUsd) startBalance = b.totalUsd;
+      if (startBalance && b.totalUsd) {
+        const pnlPct = ((b.totalUsd - startBalance) / startBalance * 100);
+        const pnlUsd = b.totalUsd - startBalance;
+        const el = document.getElementById('pnl');
+        el.textContent = (pnlUsd >= 0 ? '+' : '') + '$' + fmt(pnlUsd) + ' (' + fmt(pnlPct, 2) + '%)';
+        el.className = 'amount ' + (pnlUsd >= 0 ? 'pnl-positive' : 'pnl-negative');
+      }
+
+      // 지표
+      const d = state.indicators || {};
+      if (d.rsi) {
+        document.getElementById('rsi-val').textContent = d.rsi.value || '--';
+        setSig('rsi-sig', d.rsi.signal);
+      }
+      if (d.stochRSI) {
+        document.getElementById('stoch-val').textContent = d.stochRSI.value || '--';
+        setSig('stoch-sig', d.stochRSI.signal);
+      }
+      if (d.macd) {
+        document.getElementById('macd-val').textContent = d.macd.histogram || '--';
+        setSig('macd-sig', d.macd.signal);
+      }
+      if (d.bollinger) {
+        document.getElementById('bb-val').textContent =
+          (d.bollinger.lower || '--') + ' / ' + (d.bollinger.upper || '--');
+        setSig('bb-sig', d.bollinger.signal);
+      }
+      if (d.ema) {
+        document.getElementById('ema-val').textContent =
+          '$' + (d.ema.ema9 || '--') + ' / $' + (d.ema.ema21 || '--');
+        setSig('ema-sig', d.ema.signal);
+      }
+      if (d.vwap) {
+        document.getElementById('vwap-val').textContent = '$' + (d.vwap.value || '--');
+        setSig('vwap-sig', d.vwap.signal);
+      }
+
+      // Fear & Greed
+      if (d.fearGreed) {
+        const fg = d.fearGreed;
+        document.getElementById('fg-value').textContent = fg.value || '--';
+        document.getElementById('fg-label').textContent = fg.label || '--';
+        const pct = ((fg.value || 50) / 100 * 100);
+        document.getElementById('fg-needle').style.left = pct + '%';
+        const fgEl = document.getElementById('fg-value');
+        fgEl.style.color = fg.value <= 30 ? '#48bb78' : fg.value >= 70 ? '#f56565' : '#ed8936';
+      }
+    }
+
+    function setSig(id, sig) {
+      const el = document.getElementById(id);
+      el.textContent = sig || 'HOLD';
+      el.className = 'sig ' + sigClass(sig);
+    }
+
+    function updateTrades(trades) {
+      const tbody = document.getElementById('trades-body');
+      if (!trades || trades.length === 0) return;
+      tbody.innerHTML = trades.slice(0, 20).map(t => `
+        <tr>
+          <td style="color:#718096">${new Date(t.timestamp).toLocaleString('ko-KR')}</td>
+          <td class="${t.side === 'BUY' ? 'badge-buy' : 'badge-sell'}">${t.side}</td>
+          <td>$${fmt(t.price)}</td>
+          <td>${fmt(t.volume, 8)}</td>
+          <td>$${fmt(t.usd)}</td>
+          <td><span class="sig ${sigClass(t.signal)}">${t.signal || '--'}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    // SSE 연결
+    const evtSource = new EventSource('/api/stream');
+    evtSource.onmessage = (e) => {
+      try { updateState(JSON.parse(e.data)); } catch {}
+    };
+
+    // 거래 내역 주기적 로드
+    async function loadTrades() {
+      try {
+        const r = await fetch('/api/trades');
+        updateTrades(await r.json());
+      } catch {}
+    }
+    loadTrades();
+    setInterval(loadTrades, 10000);
+
+    // 초기 상태 로드
+    fetch('/api/state').then(r => r.json()).then(updateState).catch(() => {});
+  </script>
+</body>
+</html>

@@ -7,8 +7,11 @@ const { calcATR, calcATRPositionSize } = require('../strategies/atr');
 const { canTrade, setDailyBaseline } = require('../risk/manager');
 const { signTradeIntent } = require('../signing/eip712');
 
+const { saveState, saveTrade } = require('./state');
+
 const PAIR = 'XBTUSD';
 const INTERVAL_MS = 60 * 1000; // 1분마다 실행
+let cycleCount = 0;
 
 // ERC-8004 온체인 설정
 const ONCHAIN_ENABLED = !!(process.env.AGENT_PRIVATE_KEY && process.env.TRADE_VALIDATOR_ADDRESS);
@@ -25,7 +28,8 @@ if (ONCHAIN_ENABLED) {
 }
 
 async function runCycle() {
-  console.log(`\n[${new Date().toISOString()}] 사이클 시작`);
+  cycleCount++;
+  console.log(`\n[${new Date().toISOString()}] 사이클 시작 (#${cycleCount})`);
 
   try {
     // 잔고 조회
@@ -36,6 +40,7 @@ async function runCycle() {
 
     if (usdBalance < 1 && btcBalance < 0.0001) {
       console.log('[경고] 잔고 부족 - 스킵');
+      saveState({ status: 'warning', balance: { usd: usdBalance, btc: btcBalance, totalUsd: 0 } });
       return;
     }
 
@@ -45,6 +50,7 @@ async function runCycle() {
 
     if (!canTrade(totalUSD)) {
       console.log('[리스크] 오늘 거래 중단');
+      saveState({ status: 'halted', price: currentPrice, balance: { usd: usdBalance, btc: btcBalance, totalUsd: totalUSD } });
       return;
     }
 
@@ -60,6 +66,18 @@ async function runCycle() {
     console.log(`  RSI:${detail.rsi.value} StochRSI:${detail.stochRSI.value} MACD:${detail.macd.histogram}`);
     console.log(`  EMA:${detail.ema.signal} VWAP:${detail.vwap.signal} F&G:${detail.fearGreed.value}(${detail.fearGreed.label})`);
     console.log(`  BTC: $${currentPrice.toLocaleString()}`);
+
+    // 상태 저장 (대시보드용)
+    saveState({
+      status: 'running',
+      cycle: cycleCount,
+      price: currentPrice,
+      signal,
+      votes,
+      indicators: detail,
+      balance: { usd: usdBalance, btc: btcBalance, totalUsd: totalUSD },
+      pnl: { currentBalance: totalUSD },
+    });
 
     let shouldTrade = false;
     let isBuy = false;
@@ -109,6 +127,18 @@ async function runCycle() {
       : sellMarket(PAIR, volume.toFixed(8));
 
     console.log('[주문 완료]', JSON.stringify(orderResult));
+
+    // 거래 기록 저장
+    saveTrade({
+      side: isBuy ? 'BUY' : 'SELL',
+      pair: PAIR,
+      volume: parseFloat(volume.toFixed(8)),
+      price: currentPrice,
+      usd: volume * currentPrice,
+      signal,
+      votes,
+    });
+    saveState({ lastTrade: { side: isBuy ? 'BUY' : 'SELL', price: currentPrice, volume, time: new Date().toISOString() } });
 
   } catch (err) {
     console.error('[에러]', err.message);
