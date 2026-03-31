@@ -46,6 +46,6 @@ app.get('/api/stream', (req, res) => {
   req.on('close', () => clearInterval(interval));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`[대시보드] http://localhost:${PORT}`);
 });
