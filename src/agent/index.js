@@ -75,11 +75,13 @@ function loadTrades() {
 
 // ─── 물타기 / 불타기 진입 판단 ───
 function checkPyramidEntry(currentPrice) {
-  if (!pendingTrade || pendingTrade.entries.length >= PYRAMID.MAX_ENTRIES) return null;
+  if (!pendingTrade || !pendingTrade.entries || pendingTrade.entries.length >= PYRAMID.MAX_ENTRIES) return null;
 
-  const entryCount = pendingTrade.entries.length; // 현재 진입 횟수 (1~2)
+  const entryCount = pendingTrade.entries.length;
+  if (entryCount === 0 || !pendingTrade.avgPrice) return null;
   const pricePct = (currentPrice - pendingTrade.avgPrice) / pendingTrade.avgPrice;
-  const baseVolume = pendingTrade.entries[0].volume;
+  const baseVolume = pendingTrade.entries[0]?.volume || pendingTrade.totalVolume || 0;
+  if (!baseVolume) return null;
 
   // 물타기: 하락 중 추가 매수
   if (entryCount === 1 && pricePct <= PYRAMID.DCA_STEP_1) {
@@ -141,25 +143,28 @@ if (pendingTrade) {
   }
   console.log(`[포지션 복원] 평균진입 $${pendingTrade.avgPrice?.toLocaleString()} | ${pendingTrade.entries.length}회 진입 | 총 ${pendingTrade.totalVolume?.toFixed(6)} BTC`);
 } else {
-  // position.json 없으면 trades.json에서 순 BTC 잔고 계산해 포지션 재구성
-  const allTrades = loadTrades();
-  const netBtc = allTrades.reduce((s, t) => t.side === 'BUY' ? s + t.volume : s - t.volume, 0);
+  // position.json 없으면 trades.json에서 마지막 SELL 이후 BUY만 포지션 재구성
+  const allTrades = loadTrades(); // 최신순 정렬
+  // 마지막 SELL 인덱스 찾기 (없으면 전체)
+  const lastSellIdx = allTrades.findIndex(t => t.side === 'SELL');
+  const recentTrades = lastSellIdx === -1 ? allTrades : allTrades.slice(0, lastSellIdx);
+  const recentBuys = recentTrades.filter(t => t.side === 'BUY');
+  const netBtc = recentBuys.reduce((s, t) => s + t.volume, 0);
   if (netBtc > 0.0001) {
-    const buys = allTrades.filter(t => t.side === 'BUY');
-    const totalCost = buys.reduce((s, t) => s + t.usd, 0);
-    const totalVol = buys.reduce((s, t) => s + t.volume, 0);
+    const totalCost = recentBuys.reduce((s, t) => s + (t.usd || t.price * t.volume), 0);
+    const totalVol = recentBuys.reduce((s, t) => s + t.volume, 0);
     const avgP = totalCost / totalVol;
     pendingTrade = {
-      entries: buys.map(t => ({ price: t.price, volume: t.volume, time: t.time })),
+      entries: recentBuys.map(t => ({ price: t.price, volume: t.volume, time: t.timestamp || t.time })),
       avgPrice: avgP,
       totalVolume: netBtc,
-      peakPrice: Math.max(...buys.map(t => t.price)),
+      peakPrice: Math.max(...recentBuys.map(t => t.price)),
       state: null,
       action: 'BUY',
       indicators: null,
     };
     savePosition(pendingTrade);
-    console.log(`[포지션 재구성] trades.json 기반 | 평균진입 $${avgP.toFixed(0)} | 총 ${netBtc.toFixed(6)} BTC`);
+    console.log(`[포지션 재구성] trades.json 기반 | 평균진입 $${avgP.toFixed(0)} | 총 ${netBtc.toFixed(6)} BTC | ${recentBuys.length}회 진입`);
   }
 }
 
@@ -248,10 +253,11 @@ async function runCycle() {
 
     const currentPrice = getTicker(PAIR);
     // 가용 USD = 총자산 - BTC 보유액 (페이퍼 모드에서 BTC 직접 조회 불가)
-    const btcBalance = pendingTrade ? pendingTrade.totalVolume : 0;
-    const btcHeldValue = btcBalance * currentPrice;
-    const usdBalance = Math.max(0, totalPortfolio - btcHeldValue);
-    console.log(`[잔고] 가용USD: $${usdBalance.toFixed(2)} | BTC: ${btcBalance.toFixed(6)} ($${btcHeldValue.toFixed(0)}) | 총: $${totalPortfolio.toFixed(2)} | PnL: ${unrealizedPnl >= 0 ? '+' : ''}$${unrealizedPnl.toFixed(2)}`);
+    const btcBalance = (pendingTrade ? (pendingTrade.totalVolume || 0) : 0);
+    const btcHeldValue = btcBalance * (currentPrice || 0);
+    const usdBalance = Math.max(0, (totalPortfolio || 0) - btcHeldValue);
+    const safePnl = (typeof unrealizedPnl === 'number' && isFinite(unrealizedPnl)) ? unrealizedPnl : 0;
+    console.log(`[잔고] 가용USD: $${usdBalance.toFixed(2)} | BTC: ${btcBalance.toFixed(6)} ($${btcHeldValue.toFixed(0)}) | 총: ${(totalPortfolio||0).toFixed(2)} | PnL: ${safePnl >= 0 ? '+' : ''}$${safePnl.toFixed(2)}`);
 
     if (totalPortfolio < 1) {
       saveState({ status: 'warning', balance: { usd: usdBalance, btc: btcBalance, totalUsd: totalPortfolio } });
@@ -456,6 +462,7 @@ async function runCycle() {
 
   } catch (err) {
     console.error('[에러]', err.message);
+    console.error('[스택]', err.stack?.split('\n').slice(0, 4).join(' | '));
     saveState({ status: 'error' });
   }
 }

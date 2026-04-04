@@ -94,14 +94,15 @@ async function getCombinedSignal(closes, candles, threshold = 3) {
   if (weightedBuy >= BUY_THRESHOLD) finalSignal = 'BUY';
   if (weightedSell >= SELL_THRESHOLD && weightedSell > weightedBuy) finalSignal = 'SELL';
 
+  const safeNum = (v) => (typeof v === 'number' && isFinite(v)) ? v : 0;
   return {
     signal: finalSignal,
     votes: {
       buyCount, sellCount, total: signals.length,
-      buyScore: parseFloat(buyScore.toFixed(1)),
-      sellScore: parseFloat(sellScore.toFixed(1)),
-      weightedBuy: parseFloat(weightedBuy.toFixed(1)),
-      weightedSell: parseFloat(weightedSell.toFixed(1)),
+      buyScore: parseFloat(safeNum(buyScore).toFixed(1)),
+      sellScore: parseFloat(safeNum(sellScore).toFixed(1)),
+      weightedBuy: parseFloat(safeNum(weightedBuy).toFixed(1)),
+      weightedSell: parseFloat(safeNum(weightedSell).toFixed(1)),
     },
     detail: {
       rsi:       { signal: rsi.signal,       value: rsi.rsi?.toFixed(2),             weight: weights.rsi?.toFixed(2) },
